@@ -1,0 +1,6 @@
+{
+  "name": "Personal Expense Manager",
+  "description": "A comprehensive Personal Finance Management System to track expenses, income, budgets, assets, subscriptions, savings, and borrowings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

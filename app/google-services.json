@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "425286213986",
+    "project_id": "personal-expense-manager-1babb",
+    "storage_bucket": "personal-expense-manager-1babb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:425286213986:android:0fb6af7c2b7c0d3f0b4c3b",
+        "android_client_info": {
+          "package_name": "com.aistudio.personalfinance.shdwp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC32CuwzTc8wfIqG0NGWCc580OskLrCmjo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
