@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
+import com.example.sms.SmsNotificationHelper
+import com.example.sms.SmsParser
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
@@ -105,6 +107,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val wishlist = repository.allWishlistItems.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val customCategories = repository.allCustomCategories.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val creditCards = repository.allCreditCards.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val pendingSmsTransactions = repository.allPendingSmsTransactions.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Search & Filter state
     private val _searchText = MutableStateFlow("")
@@ -229,6 +232,73 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 firestore.collection("users").document(user.uid).collection("transactions")
                     .document(tx.id.toString()).delete()
             }
+        }
+    }
+
+    // PENDING SMS TRANSACTIONS ACTIONS
+    fun confirmPendingSms(
+        item: PendingSmsTransaction,
+        chosenCategory: String,
+        chosenSubcategory: String = "",
+        chosenPaymentMethod: String = item.paymentMethod,
+        chosenCreditCardId: Long? = item.creditCardId
+    ) {
+        viewModelScope.launch {
+            val newTx = Transaction(
+                amount = item.amount,
+                category = chosenCategory,
+                subcategory = chosenSubcategory,
+                paymentMethod = chosenPaymentMethod,
+                merchant = item.merchant,
+                notes = if (item.rawBody.isNotBlank()) "Auto-detected from SMS: ${item.rawBody.take(120)}" else "Auto-detected from SMS",
+                type = item.type,
+                date = item.date,
+                creditCardId = chosenCreditCardId
+            )
+            addTransaction(newTx)
+            repository.deletePendingSmsTransaction(item)
+        }
+    }
+
+    fun dismissPendingSms(item: PendingSmsTransaction) {
+        viewModelScope.launch {
+            repository.deletePendingSmsTransaction(item)
+        }
+    }
+
+    fun simulateSmsReceived(sender: String, body: String) {
+        viewModelScope.launch {
+            val parsed = SmsParser.parseSms(sender, body) ?: return@launch
+            var matchedCreditCardId: Long? = null
+            var finalPaymentMethod = parsed.paymentMethod
+
+            if (parsed.lastFourDigits.isNotBlank()) {
+                val cards = repository.getAllCreditCardsList()
+                val matchedCard = cards.firstOrNull { card ->
+                    card.lastFourDigits.isNotBlank() && (card.lastFourDigits == parsed.lastFourDigits || card.lastFourDigits.endsWith(parsed.lastFourDigits))
+                }
+                if (matchedCard != null) {
+                    matchedCreditCardId = matchedCard.id
+                    finalPaymentMethod = "Credit Card"
+                }
+            }
+
+            val pendingTx = PendingSmsTransaction(
+                date = System.currentTimeMillis(),
+                amount = parsed.amount,
+                type = parsed.type,
+                merchant = parsed.merchant,
+                rawSender = parsed.rawSender,
+                rawBody = parsed.rawBody,
+                suggestedCategory = parsed.suggestedCategory,
+                paymentMethod = finalPaymentMethod,
+                creditCardId = matchedCreditCardId,
+                lastFourDigits = parsed.lastFourDigits
+            )
+
+            val insertedId = repository.insertPendingSmsTransaction(pendingTx)
+            val txWithId = pendingTx.copy(id = insertedId)
+            SmsNotificationHelper.showDetectedNotification(getApplication(), txWithId)
         }
     }
 

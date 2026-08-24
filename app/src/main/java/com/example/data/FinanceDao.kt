@@ -133,4 +133,20 @@ interface FinanceDao {
 
     @Query("SELECT * FROM transactions WHERE creditCardId = :creditCardId ORDER BY date DESC")
     fun getTransactionsByCreditCard(creditCardId: Long): Flow<List<Transaction>>
+
+    // PENDING SMS TRANSACTIONS
+    @Query("SELECT * FROM pending_sms_transactions ORDER BY date DESC")
+    fun getAllPendingSmsTransactions(): Flow<List<PendingSmsTransaction>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPendingSmsTransaction(item: PendingSmsTransaction): Long
+
+    @Delete
+    suspend fun deletePendingSmsTransaction(item: PendingSmsTransaction)
+
+    @Query("DELETE FROM pending_sms_transactions WHERE id = :id")
+    suspend fun deletePendingSmsTransactionById(id: Long)
+
+    @Query("SELECT * FROM credit_cards")
+    suspend fun getAllCreditCardsList(): List<CreditCard>
 }

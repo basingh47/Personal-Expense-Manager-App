@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.sms.SmsNotificationHelper
 import com.example.ui.*
 import com.example.ui.theme.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        SmsNotificationHelper.createNotificationChannel(this)
         
         setContent {
             val context = androidx.compose.ui.platform.LocalContext.current

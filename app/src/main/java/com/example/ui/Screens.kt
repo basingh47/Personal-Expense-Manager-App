@@ -34,7 +34,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.example.data.*
+import com.example.sms.SmsParser
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -54,9 +60,38 @@ fun DashboardScreen(
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
     val budgets by viewModel.budgets.collectAsStateWithLifecycle()
     val upcomingReminders by viewModel.upcomingReminders.collectAsStateWithLifecycle()
+    val pendingSmsList by viewModel.pendingSmsTransactions.collectAsStateWithLifecycle()
+    val customCategories by viewModel.customCategories.collectAsStateWithLifecycle()
 
     val currentSavings = monthIncome - monthSpent
     var editingTransaction by remember { mutableStateOf<Transaction?>(null) }
+    var showSimulateSmsDialog by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val checkAllPermissions = {
+        val smsGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) == PackageManager.PERMISSION_GRANTED
+        val notifGranted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        } else true
+        smsGranted && notifGranted
+    }
+
+    var hasSmsPermission by remember {
+        mutableStateOf(checkAllPermissions())
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        hasSmsPermission = checkAllPermissions()
+    }
+
+    val categoryDefs = remember(customCategories) {
+        val expenseDefs = customCategories.filter { it.parentCategory == null }.map { cat ->
+            val subs = customCategories.filter { it.parentCategory == cat.name }.map { it.name }
+            CategoryDef(name = cat.name, icon = cat.icon, subcategories = subs, isCustom = true)
+        }
+        if (expenseDefs.isNotEmpty()) expenseDefs else CategoryData.expenseCategories
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -110,6 +145,88 @@ fun DashboardScreen(
                         )
                     }
                 }
+            }
+        }
+
+        // Bank SMS Auto-Detection Status & Testing Banner
+        item {
+            SmsDetectionBannerCard(
+                hasPermission = hasSmsPermission,
+                pendingCount = pendingSmsList.size,
+                onRequestPermission = {
+                    val perms = mutableListOf(
+                        Manifest.permission.RECEIVE_SMS,
+                        Manifest.permission.READ_SMS
+                    )
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    permissionLauncher.launch(perms.toTypedArray())
+                },
+                onSimulateClick = {
+                    showSimulateSmsDialog = true
+                }
+            )
+        }
+
+        // PENDING SMS TRANSACTIONS SECTION (Waiting for user categorization)
+        if (pendingSmsList.isNotEmpty()) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = PrimaryEmerald, modifier = Modifier.size(18.dp))
+                            Text(
+                                text = "Action Required: Categorize Bank SMS",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = SmoothWhite
+                            )
+                        }
+                        Text(
+                            text = "${pendingSmsList.size} pending",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AccentGold,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Text(
+                        text = "We detected transactions from your bank messages. Tap a category below to log them directly:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MutedText
+                    )
+                }
+            }
+
+            items(pendingSmsList, key = { "pending_sms_${it.id}" }) { pending ->
+                PendingSmsCard(
+                    pending = pending,
+                    categories = categoryDefs,
+                    onConfirm = { cat, sub ->
+                        viewModel.confirmPendingSms(pending, cat, sub, pending.paymentMethod, pending.creditCardId)
+                    },
+                    onDismiss = {
+                        viewModel.dismissPendingSms(pending)
+                    },
+                    onEdit = {
+                        editingTransaction = Transaction(
+                            amount = pending.amount,
+                            category = if (pending.suggestedCategory.isNotBlank()) pending.suggestedCategory else "Food",
+                            subcategory = "",
+                            paymentMethod = pending.paymentMethod,
+                            merchant = pending.merchant,
+                            notes = "SMS: ${pending.rawBody}",
+                            type = pending.type,
+                            date = pending.date,
+                            creditCardId = pending.creditCardId
+                        )
+                        viewModel.dismissPendingSms(pending)
+                    }
+                )
             }
         }
 
@@ -452,6 +569,13 @@ fun DashboardScreen(
             viewModel = viewModel,
             transactionToEdit = editingTransaction,
             onDismiss = { editingTransaction = null }
+        )
+    }
+
+    if (showSimulateSmsDialog) {
+        SimulateSmsDialog(
+            viewModel = viewModel,
+            onDismiss = { showSimulateSmsDialog = false }
         )
     }
 }
@@ -5721,6 +5845,589 @@ fun AddCreditCardDialog(
                     ) {
                         Text("Save", color = SmoothWhite)
                     }
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
+// SMS AUTO-DETECTION & CATEGORIZATION UI
+// ==========================================
+
+@Composable
+fun SmsDetectionBannerCard(
+    hasPermission: Boolean,
+    pendingCount: Int,
+    onRequestPermission: () -> Unit,
+    onSimulateClick: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        border = BorderStroke(1.dp, if (pendingCount > 0) PrimaryEmerald.copy(alpha = 0.8f) else SecondarySage.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth().testTag("sms_detection_banner_card")
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (pendingCount > 0) PrimaryEmerald.copy(alpha = 0.2f) else AccentGold.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sms,
+                            contentDescription = null,
+                            tint = if (pendingCount > 0) PrimaryEmerald else AccentGold,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Bank SMS Auto-Detection",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = SmoothWhite
+                            )
+                            if (pendingCount > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(PrimaryEmerald)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "$pendingCount NEW",
+                                        color = SmoothWhite,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = if (hasPermission) "Live tracking on-device bank alerts" else "Grant permission to auto-detect bank SMS",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MutedText
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (!hasPermission) {
+                    Button(
+                        onClick = onRequestPermission,
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.weight(1f).testTag("enable_sms_permission_btn"),
+                        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp)
+                    ) {
+                        Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Enable SMS Access", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onSimulateClick,
+                    border = BorderStroke(1.dp, AccentGold.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = if (!hasPermission) Modifier.weight(1f) else Modifier.fillMaxWidth().testTag("simulate_sms_test_btn"),
+                    contentPadding = PaddingValues(vertical = 8.dp, horizontal = 12.dp)
+                ) {
+                    Icon(Icons.Default.Bolt, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Simulate / Test Bank SMS", color = AccentGold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PendingSmsCard(
+    pending: PendingSmsTransaction,
+    categories: List<CategoryDef>,
+    onConfirm: (category: String, subcategory: String) -> Unit,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit
+) {
+    var selectedCategory by remember(pending.id) {
+        val initial = if (pending.suggestedCategory.isNotBlank()) pending.suggestedCategory else "Food"
+        mutableStateOf(initial)
+    }
+    var selectedSubcategory by remember(pending.id, selectedCategory) {
+        mutableStateOf("")
+    }
+    var showRawSms by remember { mutableStateOf(false) }
+
+    val availableCategories = remember(categories, pending.type) {
+        val typeFiltered = if (pending.type == "INCOME") CategoryData.incomeCategories else CategoryData.expenseCategories
+        val merged = (categories + typeFiltered).distinctBy { it.name }
+        merged
+    }
+
+    val currentCatDef = availableCategories.firstOrNull { it.name == selectedCategory }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        border = BorderStroke(1.5.dp, PrimaryEmerald),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("pending_sms_card_${pending.id}")
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Top Header: Badge + Time + Dismiss
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(PrimaryEmerald.copy(alpha = 0.2f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, tint = PrimaryEmerald, modifier = Modifier.size(14.dp))
+                            Text("Bank SMS Detected", color = PrimaryEmerald, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+
+                    val dateStr = remember(pending.date) {
+                        SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(pending.date))
+                    }
+                    Text(text = dateStr, color = MutedText, fontSize = 12.sp)
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(28.dp).testTag("dismiss_pending_sms_${pending.id}")
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Dismiss", tint = MutedText, modifier = Modifier.size(18.dp))
+                }
+            }
+
+            // Amount & Merchant Info
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (pending.merchant.isNotBlank()) pending.merchant else "Bank Transaction",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SmoothWhite,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "via ${pending.paymentMethod}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AccentGold,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (pending.rawSender.isNotBlank()) {
+                            Text(text = "•", color = MutedText)
+                            Text(
+                                text = pending.rawSender,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MutedText
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = "${if (pending.type == "INCOME") "+" else "-"}₹${"%,.2f".format(pending.amount)}",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (pending.type == "INCOME") GreenIncome else RedExpense
+                )
+            }
+
+            // Raw SMS text toggle
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(DarkBackground)
+                    .clickable { showRawSms = !showRawSms }
+                    .padding(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (showRawSms) "Hide SMS Message" else "View Original SMS Message",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MutedText,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Icon(
+                        imageVector = if (showRawSms) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MutedText,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+                if (showRawSms) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = pending.rawBody,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SmoothWhite.copy(alpha = 0.8f),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            HorizontalDivider(color = DarkSurfaceVariant)
+
+            // CATEGORY SELECTION FLOW
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Assign Category:",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SmoothWhite
+                    )
+                    Text(
+                        text = "Tap to select",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MutedText
+                    )
+                }
+
+                // Main Category Chips
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    availableCategories.forEach { cat ->
+                        val isSelected = selectedCategory == cat.name
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                selectedCategory = cat.name
+                                selectedSubcategory = ""
+                            },
+                            label = {
+                                Text(
+                                    text = "${cat.icon} ${cat.name}",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = PrimaryEmerald,
+                                selectedLabelColor = SmoothWhite,
+                                containerColor = DarkSurfaceVariant,
+                                labelColor = SmoothWhite
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = isSelected,
+                                borderColor = if (isSelected) PrimaryEmerald else Color.Transparent
+                            )
+                        )
+                    }
+                }
+
+                // Subcategory Chips (if present for chosen category)
+                if (currentCatDef != null && currentCatDef.subcategories.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Subcategory (Optional):",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MutedText
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        currentCatDef.subcategories.forEach { sub ->
+                            val isSelected = selectedSubcategory == sub
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    selectedSubcategory = if (isSelected) "" else sub
+                                },
+                                label = {
+                                    Text(
+                                        text = sub,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = AccentGold,
+                                    selectedLabelColor = DarkBackground,
+                                    containerColor = DarkBackground,
+                                    labelColor = SmoothWhite
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = isSelected,
+                                    borderColor = if (isSelected) AccentGold else DarkSurfaceVariant
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Action Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { onConfirm(selectedCategory, selectedSubcategory) },
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1.4f).testTag("confirm_sms_transaction_${pending.id}")
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Confirm & Add", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+
+                OutlinedButton(
+                    onClick = onEdit,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).testTag("edit_sms_transaction_${pending.id}")
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, tint = SmoothWhite, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Edit", color = SmoothWhite, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SimulateSmsDialog(
+    viewModel: FinanceViewModel,
+    onDismiss: () -> Unit
+) {
+    var customSender by remember { mutableStateOf("VK-HDFCBK") }
+    var customBody by remember { mutableStateOf("") }
+
+    val presets = remember {
+        listOf(
+            Triple(
+                "🍔 Swiggy Food Delivery",
+                "VK-HDFCBK",
+                "Alert: INR 450.00 debited on HDFC Bank Credit Card ending 4092 at SWIGGY on 24-AUG-26. Avl limit: INR 94,550.00."
+            ),
+            Triple(
+                "🛍️ Amazon Shopping",
+                "SBIINB",
+                "Dear SBI User, your A/c ending 1234 has been debited by Rs. 1,499.00 on 24-Aug-2026 14:30 via UPI to AMAZON PAY INDIA. Ref 423985729182."
+            ),
+            Triple(
+                "⛽ Bharat Petroleum Fuel",
+                "AXISBK",
+                "Txn of INR 2,200.00 spent on Axis Bank Credit Card ending 5678 at BHARAT PETROLEUM on 24-AUG-26."
+            ),
+            Triple(
+                "☕ Starbucks Cafe",
+                "PAYTM",
+                "Paid Rs. 380.00 successfully to STARBUCKS COFFEE from your UPI A/c."
+            ),
+            Triple(
+                "💵 Monthly Salary",
+                "ICICIB",
+                "Your ICICI Bank A/c xx8821 is credited with INR 75,000.00 on 24-AUG-2026 by SALARY AUGUST 2026. Available bal INR 1,12,400.00."
+            ),
+            Triple(
+                "🎬 BookMyShow Movie",
+                "KOTAKB",
+                "Your Kotak Bank Card ending 4092 was charged INR 680.00 for purchase at BOOKMYSHOW on 24-Aug."
+            )
+        )
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Bolt, contentDescription = null, tint = AccentGold)
+                        Text(
+                            text = "Test Bank SMS Auto-Detect",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = SmoothWhite
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = MutedText)
+                    }
+                }
+
+                Text(
+                    text = "Tap a real bank SMS preset or paste your own message to test instant on-device parsing & category prompt.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MutedText
+                )
+
+                Text(
+                    text = "Preset Bank SMS Samples:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = SmoothWhite
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    presets.forEach { (title, sender, body) ->
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = DarkBackground),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, DarkSurfaceVariant),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.simulateSmsReceived(sender, body)
+                                    onDismiss()
+                                }
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SmoothWhite
+                                    )
+                                    Icon(Icons.Default.Send, contentDescription = "Send", tint = PrimaryEmerald, modifier = Modifier.size(16.dp))
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = body,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MutedText,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = DarkSurfaceVariant)
+
+                Text(
+                    text = "Or Test Custom SMS Text:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = SmoothWhite
+                )
+
+                OutlinedTextField(
+                    value = customSender,
+                    onValueChange = { customSender = it },
+                    label = { Text("Sender ID (e.g. HDFCBK, SBIPAY)", color = MutedText) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryEmerald,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    )
+                )
+
+                OutlinedTextField(
+                    value = customBody,
+                    onValueChange = { customBody = it },
+                    label = { Text("SMS Message Body", color = MutedText) },
+                    placeholder = { Text("e.g. Rs 500 debited for order at Zomato...", color = MutedText.copy(alpha = 0.5f)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PrimaryEmerald,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                    )
+                )
+
+                Button(
+                    onClick = {
+                        if (customBody.isNotBlank()) {
+                            viewModel.simulateSmsReceived(customSender, customBody)
+                            onDismiss()
+                        }
+                    },
+                    enabled = customBody.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Parse & Detect SMS", fontWeight = FontWeight.Bold, color = SmoothWhite)
                 }
             }
         }

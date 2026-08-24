@@ -61,4 +61,12 @@ class FinanceRepository(private val financeDao: FinanceDao) {
     suspend fun insertCreditCard(card: CreditCard): Long = financeDao.insertCreditCard(card)
     suspend fun deleteCreditCard(card: CreditCard) = financeDao.deleteCreditCard(card)
     suspend fun deleteCreditCardById(id: Long) = financeDao.deleteCreditCardById(id)
+    suspend fun getAllCreditCardsList(): List<CreditCard> = financeDao.getAllCreditCardsList()
+
+    // PENDING SMS TRANSACTIONS
+    val allPendingSmsTransactions: Flow<List<PendingSmsTransaction>> = financeDao.getAllPendingSmsTransactions()
+    suspend fun insertPendingSmsTransaction(item: PendingSmsTransaction): Long = financeDao.insertPendingSmsTransaction(item)
+    suspend fun deletePendingSmsTransaction(item: PendingSmsTransaction) = financeDao.deletePendingSmsTransaction(item)
+    suspend fun deletePendingSmsTransactionById(id: Long) = financeDao.deletePendingSmsTransactionById(id)
 }
+

@@ -106,3 +106,18 @@ data class CreditCard(
     val lastFourDigits: String = ""
 )
 
+@Entity(tableName = "pending_sms_transactions")
+data class PendingSmsTransaction(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val date: Long = System.currentTimeMillis(),
+    val amount: Double,
+    val type: String = "EXPENSE", // "EXPENSE" or "INCOME"
+    val merchant: String = "",
+    val rawSender: String = "",
+    val rawBody: String = "",
+    val suggestedCategory: String = "Food & Drinks",
+    val paymentMethod: String = "UPI", // Cash, UPI, Credit Card, Bank
+    val creditCardId: Long? = null,
+    val lastFourDigits: String = ""
+)
+
