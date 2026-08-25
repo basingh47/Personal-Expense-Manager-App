@@ -22,6 +22,10 @@ class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
+        val sharedPrefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        val isEnabled = sharedPrefs.getBoolean("sms_detection_enabled", true)
+        if (!isEnabled) return
+
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (messages.isNullOrEmpty()) return
 
@@ -41,18 +45,46 @@ class SmsReceiver : BroadcastReceiver() {
                 val db = AppDatabase.getDatabase(context)
                 val dao = db.financeDao()
 
-                // Check if card matches any registered credit card
+                // Check registered Bank Accounts and Credit Cards
+                val bankAccounts = dao.getAllBankAccountsList()
+                val cards = dao.getAllCreditCardsList()
+
+                var matchedBankAccountId: Long? = null
                 var matchedCreditCardId: Long? = null
                 var finalPaymentMethod = parsed.paymentMethod
 
+                // 1. Check Credit Card match first
                 if (parsed.lastFourDigits.isNotBlank()) {
-                    val cards = dao.getAllCreditCardsList()
                     val matchedCard = cards.firstOrNull { card ->
                         card.lastFourDigits.isNotBlank() && (card.lastFourDigits == parsed.lastFourDigits || card.lastFourDigits.endsWith(parsed.lastFourDigits))
                     }
                     if (matchedCard != null) {
                         matchedCreditCardId = matchedCard.id
                         finalPaymentMethod = "Credit Card"
+                    }
+                }
+
+                // 2. Check Bank Account match (by digits or by sender name)
+                val matchedBank = if (parsed.lastFourDigits.isNotBlank()) {
+                    bankAccounts.firstOrNull { bank ->
+                        bank.accountNumberLast4.isNotBlank() && (bank.accountNumberLast4 == parsed.lastFourDigits || bank.accountNumberLast4.endsWith(parsed.lastFourDigits))
+                    }
+                } else null ?: bankAccounts.firstOrNull { bank ->
+                    val bankKey = bank.bankName.lowercase().replace("bank", "").trim()
+                    bankKey.length >= 3 && (sender.lowercase().contains(bankKey) || fullBody.lowercase().contains(bankKey))
+                }
+
+                // 3. Bank-Level SMS Filtering Rule:
+                // If a bank is matched and SMS detection is disabled for this bank, ignore this SMS!
+                if (matchedBank != null) {
+                    if (!matchedBank.isSmsDetectionEnabled) {
+                        return@launch
+                    }
+                    matchedBankAccountId = matchedBank.id
+                    if (matchedCreditCardId == null && finalPaymentMethod != "Credit Card") {
+                        if (finalPaymentMethod != "Bank" && finalPaymentMethod != "UPI") {
+                            finalPaymentMethod = "Bank"
+                        }
                     }
                 }
 
@@ -66,6 +98,7 @@ class SmsReceiver : BroadcastReceiver() {
                     suggestedCategory = parsed.suggestedCategory,
                     paymentMethod = finalPaymentMethod,
                     creditCardId = matchedCreditCardId,
+                    bankAccountId = matchedBankAccountId,
                     lastFourDigits = parsed.lastFourDigits
                 )
 

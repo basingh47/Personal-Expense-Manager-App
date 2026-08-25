@@ -43,3 +43,15 @@ val RedExpense = Color(0xFFBA1A1A)           // Professional M3 Red
 val GreenIncome = Color(0xFF006C47)          // Professional M3 Green
 val BlueCard = Color(0xFF0061A4)             // Professional M3 Blue
 
+val SurfaceContainer: Color
+    @Composable
+    get() = MaterialTheme.colorScheme.surfaceContainer
+
+val SurfaceContainerHigh: Color
+    @Composable
+    get() = MaterialTheme.colorScheme.surfaceContainerHigh
+
+val OutlineSubtle: Color
+    @Composable
+    get() = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+

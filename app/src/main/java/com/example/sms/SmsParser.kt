@@ -23,13 +23,17 @@ object SmsParser {
         Pattern.compile("""(?:amount|spent|debited|credited|paid|received|txn of|charge of)\s*(?:of\s*)?(?:INR|Rs\.?|₹|USD|\$|EUR|€|GBP|£)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)""", Pattern.CASE_INSENSITIVE)
     )
 
+    private val refundKeywords = listOf(
+        "refund", "cashback", "reversed", "reversal", "refunded", "credited back"
+    )
+
     private val expenseKeywords = listOf(
         "debited", "spent", "paid", "sent", "purchase", "txn of", "txn for",
         "charged", "withdrawn", "transferred to", "used at", "swiped at", "deducted"
     )
 
     private val incomeKeywords = listOf(
-        "credited", "received", "deposited", "refund", "cashback", "salary", "added to your", "reversed"
+        "credited", "received", "deposited", "salary", "added to your"
     )
 
     private val cardPatterns = listOf(
@@ -55,10 +59,18 @@ object SmsParser {
 
         // 2. Determine Transaction Type
         var type: String? = null
-        for (kw in expenseKeywords) {
+        for (kw in refundKeywords) {
             if (lowerBody.contains(kw)) {
-                type = "EXPENSE"
+                type = "REFUND"
                 break
+            }
+        }
+        if (type == null) {
+            for (kw in expenseKeywords) {
+                if (lowerBody.contains(kw)) {
+                    type = "EXPENSE"
+                    break
+                }
             }
         }
         if (type == null) {
@@ -70,7 +82,7 @@ object SmsParser {
             }
         }
 
-        // If neither expense nor income keyword matched, it's not a financial transaction SMS
+        // If neither matched, it's not a financial transaction SMS
         if (type == null) {
             return null
         }

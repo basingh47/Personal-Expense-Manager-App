@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,23 +29,56 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.security.AppLockManager
 import com.example.sms.SmsNotificationHelper
+import com.example.subscription.SubscriptionNotificationHelper
 import com.example.ui.*
 import com.example.ui.theme.*
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     
     private val viewModel: FinanceViewModel by viewModels()
+    private lateinit var appLockManager: AppLockManager
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        if (::appLockManager.isInitialized) {
+            appLockManager.onUserInteraction()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::appLockManager.isInitialized) {
+            appLockManager.onAppForegrounded()
+            appLockManager.applyPrivacyFlag(this)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::appLockManager.isInitialized) {
+            appLockManager.onAppBackgrounded()
+        }
+    }
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        appLockManager = AppLockManager.getInstance(this)
+        appLockManager.applyPrivacyFlag(this)
+
         SmsNotificationHelper.createNotificationChannel(this)
+        SubscriptionNotificationHelper.createNotificationChannel(this)
+        viewModel.triggerUpcomingSubscriptionCheck(this)
         
+        val initialScreen = intent?.getStringExtra("OPEN_SCREEN") ?: "dashboard"
+
         setContent {
             val context = androidx.compose.ui.platform.LocalContext.current
             val sharedPref = remember { context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE) }
@@ -55,16 +89,23 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(defaultVal)
             }
 
+            val isPinLockEnabled by appLockManager.isPinLockEnabled.collectAsStateWithLifecycle()
+            val isAppLocked by appLockManager.isAppLocked.collectAsStateWithLifecycle()
+
             MyApplicationTheme(darkTheme = isDarkTheme.value) {
-                val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-                val scope = rememberCoroutineScope()
-                var currentScreen by remember { mutableStateOf("dashboard") }
-                var showAuthDialog by remember { mutableStateOf(false) }
-                val currentUserState by viewModel.currentUser.collectAsState()
+                if (isPinLockEnabled && isAppLocked) {
+                    PinLockScreen(appLockManager = appLockManager)
+                } else {
+                    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+                    val scope = rememberCoroutineScope()
+                    var currentScreen by remember { mutableStateOf(initialScreen) }
+                    var showAuthDialog by remember { mutableStateOf(false) }
+                    val currentUserState by viewModel.currentUser.collectAsState()
 
                 val screens = listOf(
                     DrawerItem("dashboard", "Dashboard Overview", Icons.Default.Dashboard),
                     DrawerItem("transactions", "Transactions Ledger", Icons.Default.Receipt),
+                    DrawerItem("bank_accounts", "Bank Accounts", Icons.Default.AccountBalance),
                     DrawerItem("categories", "Category Manager", Icons.Default.Category),
                     DrawerItem("budgets", "Monthly Budgets", Icons.Default.PieChart),
                     DrawerItem("assets", "Assets & Vehicles", Icons.Default.TwoWheeler),
@@ -73,7 +114,8 @@ class MainActivity : ComponentActivity() {
                     DrawerItem("savings", "Savings & Goals", Icons.Default.Savings),
                     DrawerItem("borrow_lend", "Borrow & Lend Book", Icons.Default.Handshake),
                     DrawerItem("wishlist", "Wishlist (Not Bought)", Icons.Default.CardGiftcard),
-                    DrawerItem("analytics", "Analytics & Insights", Icons.Default.QueryStats)
+                    DrawerItem("analytics", "Analytics & Insights", Icons.Default.QueryStats),
+                    DrawerItem("settings", "App Settings", Icons.Default.Settings)
                 )
 
                 ModalNavigationDrawer(
@@ -199,7 +241,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Logout,
+                                                imageVector = Icons.AutoMirrored.Filled.Logout,
                                                 contentDescription = "Log Out",
                                                 tint = RedExpense,
                                                 modifier = Modifier.size(20.dp)
@@ -280,6 +322,7 @@ class MainActivity : ComponentActivity() {
                                     onNavigateTo = { currentScreen = it }
                                 )
                                 "transactions" -> TransactionsScreen(viewModel = viewModel)
+                                "bank_accounts" -> BankAccountsScreen(viewModel = viewModel)
                                 "categories" -> CategoriesScreen(viewModel = viewModel)
                                 "budgets" -> BudgetsScreen(viewModel = viewModel)
                                 "assets" -> AssetsScreen(viewModel = viewModel)
@@ -289,6 +332,7 @@ class MainActivity : ComponentActivity() {
                                 "borrow_lend" -> BorrowLendScreen(viewModel = viewModel)
                                 "wishlist" -> WishlistScreen(viewModel = viewModel)
                                 "analytics" -> AnalyticsScreen(viewModel = viewModel)
+                                "settings" -> SettingsScreen(viewModel = viewModel, appLockManager = appLockManager)
                             }
                         }
                     }
@@ -346,6 +390,7 @@ class MainActivity : ComponentActivity() {
                         viewModel = viewModel,
                         onDismiss = { showAuthDialog = false }
                     )
+                }
                 }
             }
         }

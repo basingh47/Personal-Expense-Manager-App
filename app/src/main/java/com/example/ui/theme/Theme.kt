@@ -14,33 +14,63 @@ import androidx.compose.ui.platform.LocalContext
 private val DarkColorScheme =
   darkColorScheme(
     primary = Color(0xFFADC6FF),         // Bright Soft Blue
-    secondary = Color(0xFF3B4858),       // Dark container
-    tertiary = Color(0xFFD6E3FF),         // Highlight text/accent
-    background = Color(0xFF111318),       // Charcoal background
-    surface = Color(0xFF1B1D22),          // Slightly lighter card
-    surfaceVariant = Color(0xFF23252A),   // Lighter card
-    onPrimary = Color(0xFF002F64),
-    onSecondary = Color(0xFFE2E2E9),
-    onTertiary = Color(0xFF001B3E),
-    onBackground = Color(0xFFE2E2E9),     // Soft white
+    onPrimary = Color(0xFF002E69),
+    primaryContainer = Color(0xFF214480), // Deep Elegant Blue Container
+    onPrimaryContainer = Color(0xFFD8E2FF),
+    secondary = Color(0xFFBFC6DC),       // Soft Slate
+    onSecondary = Color(0xFF293041),
+    secondaryContainer = Color(0xFF3F4759),
+    onSecondaryContainer = Color(0xFFDAE2F9),
+    tertiary = Color(0xFFF2B8B5),        // Soft Coral Accent
+    onTertiary = Color(0xFF601410),
+    tertiaryContainer = Color(0xFF4D381E),
+    onTertiaryContainer = Color(0xFFFFE088),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF93000A),
+    onErrorContainer = Color(0xFFFFDAD6),
+    background = Color(0xFF111318),      // Deep Charcoal
+    onBackground = Color(0xFFE2E2E9),    // Soft White Text
+    surface = Color(0xFF191C22),         // Slightly elevated card base
     onSurface = Color(0xFFE2E2E9),
-    onSurfaceVariant = Color(0xFFC4C6D0)  // Muted gray
+    surfaceVariant = Color(0xFF23262E),  // Card variant
+    onSurfaceVariant = Color(0xFFC4C6D0), // Muted text
+    surfaceContainer = Color(0xFF1E2128),
+    surfaceContainerHigh = Color(0xFF282C35),
+    surfaceContainerHighest = Color(0xFF333741),
+    outline = Color(0xFF474B56),
+    outlineVariant = Color(0xFF2C3039)
   )
 
 private val LightColorScheme =
   lightColorScheme(
-    primary = Color(0xFF435E91),         // Deep Slate Blue
-    secondary = Color(0xFFE0E2EC),       // Soft light container
-    tertiary = Color(0xFF001B3E),         // Dark Accent
-    background = Color(0xFFFDFBFF),       // Clean light background
-    surface = Color(0xFFFFFFFF),          // White card
-    surfaceVariant = Color(0xFFF2F0F4),   // Soft grey surface
+    primary = Color(0xFF2B5EA7),         // Deep Slate Blue
     onPrimary = Color.White,
-    onSecondary = Color(0xFF001B3E),
+    primaryContainer = Color(0xFFD8E2FF),
+    onPrimaryContainer = Color(0xFF001A42),
+    secondary = Color(0xFF555F71),       // Soft Slate
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFDAE2F9),
+    onSecondaryContainer = Color(0xFF121B2C),
+    tertiary = Color(0xFF725572),
     onTertiary = Color.White,
-    onBackground = Color(0xFF1B1B1F),     // Charcoal black
-    onSurface = Color(0xFF1B1B1F),
-    onSurfaceVariant = Color(0xFF44474E)  // Muted Slate
+    tertiaryContainer = Color(0xFFFED7FC),
+    onTertiaryContainer = Color(0xFF2B132C),
+    error = Color(0xFFBA1A1A),
+    onError = Color.White,
+    errorContainer = Color(0xFFFFDAD6),
+    onErrorContainer = Color(0xFF410002),
+    background = Color(0xFFF9F9FC),      // Crisp off-white
+    onBackground = Color(0xFF1A1C20),
+    surface = Color(0xFFFFFFFF),         // Clean white card
+    onSurface = Color(0xFF1A1C20),
+    surfaceVariant = Color(0xFFF0F1F7),  // Soft tonal container
+    onSurfaceVariant = Color(0xFF44474E), // Muted slate text
+    surfaceContainer = Color(0xFFF3F4FA),
+    surfaceContainerHigh = Color(0xFFECEEF5),
+    surfaceContainerHighest = Color(0xFFE6E8EF),
+    outline = Color(0xFF757780),
+    outlineVariant = Color(0xFFD5D7E1)
   )
 
 @Composable

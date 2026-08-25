@@ -18,8 +18,17 @@ interface FinanceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(transaction: Transaction): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTransactions(transactions: List<Transaction>): List<Long>
+
     @Delete
     suspend fun deleteTransaction(transaction: Transaction)
+
+    @Delete
+    suspend fun deleteTransactions(transactions: List<Transaction>)
+
+    @Query("DELETE FROM transactions WHERE id IN (:ids)")
+    suspend fun deleteTransactionsByIds(ids: List<Long>)
 
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun deleteTransactionById(id: Long)
@@ -134,6 +143,28 @@ interface FinanceDao {
     @Query("SELECT * FROM transactions WHERE creditCardId = :creditCardId ORDER BY date DESC")
     fun getTransactionsByCreditCard(creditCardId: Long): Flow<List<Transaction>>
 
+    // BANK ACCOUNTS
+    @Query("SELECT * FROM bank_accounts ORDER BY bankName ASC")
+    fun getAllBankAccounts(): Flow<List<BankAccount>>
+
+    @Query("SELECT * FROM bank_accounts")
+    suspend fun getAllBankAccountsList(): List<BankAccount>
+
+    @Query("SELECT * FROM bank_accounts WHERE id = :id")
+    suspend fun getBankAccountById(id: Long): BankAccount?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBankAccount(bankAccount: BankAccount): Long
+
+    @Delete
+    suspend fun deleteBankAccount(bankAccount: BankAccount)
+
+    @Query("DELETE FROM bank_accounts WHERE id = :id")
+    suspend fun deleteBankAccountById(id: Long)
+
+    @Query("SELECT * FROM transactions WHERE bankAccountId = :bankAccountId ORDER BY date DESC")
+    fun getTransactionsByBankAccount(bankAccountId: Long): Flow<List<Transaction>>
+
     // PENDING SMS TRANSACTIONS
     @Query("SELECT * FROM pending_sms_transactions ORDER BY date DESC")
     fun getAllPendingSmsTransactions(): Flow<List<PendingSmsTransaction>>
@@ -147,6 +178,43 @@ interface FinanceDao {
     @Query("DELETE FROM pending_sms_transactions WHERE id = :id")
     suspend fun deletePendingSmsTransactionById(id: Long)
 
+    @Query("DELETE FROM pending_sms_transactions")
+    suspend fun clearAllPendingSmsTransactions()
+
     @Query("SELECT * FROM credit_cards")
     suspend fun getAllCreditCardsList(): List<CreditCard>
+
+    // BULK & SELECTIVE PURGE QUERIES
+    @Query("DELETE FROM transactions WHERE strftime('%Y-%m', date / 1000, 'unixepoch') = :yearMonth")
+    suspend fun deleteTransactionsByYearMonth(yearMonth: String): Int
+
+    @Query("DELETE FROM transactions")
+    suspend fun clearAllTransactions()
+
+    @Query("DELETE FROM assets")
+    suspend fun clearAllAssets()
+
+    @Query("DELETE FROM budgets")
+    suspend fun clearAllBudgets()
+
+    @Query("DELETE FROM subscriptions")
+    suspend fun clearAllSubscriptions()
+
+    @Query("DELETE FROM savings_goals")
+    suspend fun clearAllSavingsGoals()
+
+    @Query("DELETE FROM borrow_lend")
+    suspend fun clearAllBorrowLends()
+
+    @Query("DELETE FROM wishlist")
+    suspend fun clearAllWishlist()
+
+    @Query("DELETE FROM custom_categories")
+    suspend fun clearAllCustomCategories()
+
+    @Query("DELETE FROM credit_cards")
+    suspend fun clearAllCreditCards()
+
+    @Query("DELETE FROM bank_accounts")
+    suspend fun clearAllBankAccounts()
 }

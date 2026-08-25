@@ -15,9 +15,12 @@ data class Transaction(
     val merchant: String = "",
     val notes: String = "",
     val tagsString: String = "", // Comma-separated tags
-    val type: String, // "EXPENSE" or "INCOME"
+    val type: String, // "EXPENSE", "INCOME", "TRANSFER", "REFUND"
     val assetId: Long? = null, // For linking to a vehicle/asset
-    val creditCardId: Long? = null // For linking to a credit card
+    val creditCardId: Long? = null, // For linking to a credit card
+    val bankAccountId: Long? = null, // For linking to source bank account
+    val toBankAccountId: Long? = null, // For inter-account transfers (destination bank account)
+    val toCreditCardId: Long? = null // For credit card bill payments (destination card paid)
 ) {
     val tags: List<String>
         get() = if (tagsString.isBlank()) emptyList() else tagsString.split(",").map { it.trim() }
@@ -49,10 +52,16 @@ data class Subscription(
     val name: String, // e.g. "Netflix"
     val cost: Double,
     val renewalDate: Long,
-    val billingCycle: String, // "MONTHLY", "YEARLY"
+    val billingCycle: String, // "MONTHLY", "YEARLY", "2_MONTHS", "3_MONTHS", "6_MONTHS", etc.
     val isActive: Boolean = true,
     val category: String = "",
-    val notes: String = ""
+    val notes: String = "",
+    val isAutoRenew: Boolean = true, // Auto-Renew ON / OFF
+    val reminderDaysInAdvance: Int = 2, // How many days prior to notify (0, 1, 2, 3, 5, 7, 14 days)
+    val paymentAccountId: Long? = null, // Linked bank account
+    val paymentCardId: Long? = null, // Linked credit card
+    val paymentMethodName: String = "", // e.g. "HDFC Bank", "ICICI Amazon Pay", "UPI AutoPay"
+    val lastPaidDate: Long? = null // Timestamp of last payment
 )
 
 @Entity(tableName = "savings_goals")
@@ -106,6 +115,18 @@ data class CreditCard(
     val lastFourDigits: String = ""
 )
 
+@Entity(tableName = "bank_accounts")
+data class BankAccount(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bankName: String, // e.g. "HDFC Bank", "State Bank of India", "ICICI Bank", "Axis Bank", "Kotak", "Custom"
+    val accountNickname: String, // e.g. "Salary Account", "Savings", "Emergency Fund"
+    val accountNumberLast4: String = "", // e.g. "4589" for SMS pattern matching
+    val accountType: String = "SAVINGS", // "SAVINGS", "CURRENT", "SALARY"
+    val initialBalance: Double = 0.0,
+    val isSmsDetectionEnabled: Boolean = true, // Whether to track SMS for this specific bank
+    val isHiddenFromSummary: Boolean = false // Whether to hide/exclude from global totals & analytics
+)
+
 @Entity(tableName = "pending_sms_transactions")
 data class PendingSmsTransaction(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -118,6 +139,7 @@ data class PendingSmsTransaction(
     val suggestedCategory: String = "Food & Drinks",
     val paymentMethod: String = "UPI", // Cash, UPI, Credit Card, Bank
     val creditCardId: Long? = null,
+    val bankAccountId: Long? = null,
     val lastFourDigits: String = ""
 )
 

@@ -25,7 +25,10 @@ class FinanceRepository(private val financeDao: FinanceDao) {
 
     // INSERT / UPDATE
     suspend fun insertTransaction(transaction: Transaction): Long = financeDao.insertTransaction(transaction)
+    suspend fun insertTransactions(transactions: List<Transaction>): List<Long> = financeDao.insertTransactions(transactions)
     suspend fun deleteTransaction(transaction: Transaction) = financeDao.deleteTransaction(transaction)
+    suspend fun deleteTransactions(transactions: List<Transaction>) = financeDao.deleteTransactions(transactions)
+    suspend fun deleteTransactionsByIds(ids: List<Long>) = financeDao.deleteTransactionsByIds(ids)
     suspend fun deleteTransactionById(id: Long) = financeDao.deleteTransactionById(id)
 
     suspend fun insertAsset(asset: Asset): Long = financeDao.insertAsset(asset)
@@ -63,10 +66,38 @@ class FinanceRepository(private val financeDao: FinanceDao) {
     suspend fun deleteCreditCardById(id: Long) = financeDao.deleteCreditCardById(id)
     suspend fun getAllCreditCardsList(): List<CreditCard> = financeDao.getAllCreditCardsList()
 
+    // BANK ACCOUNTS
+    val allBankAccounts: Flow<List<BankAccount>> = financeDao.getAllBankAccounts()
+    fun getTransactionsByBankAccount(bankAccountId: Long): Flow<List<Transaction>> = financeDao.getTransactionsByBankAccount(bankAccountId)
+    suspend fun insertBankAccount(bankAccount: BankAccount): Long = financeDao.insertBankAccount(bankAccount)
+    suspend fun deleteBankAccount(bankAccount: BankAccount) = financeDao.deleteBankAccount(bankAccount)
+    suspend fun deleteBankAccountById(id: Long) = financeDao.deleteBankAccountById(id)
+    suspend fun getBankAccountById(id: Long): BankAccount? = financeDao.getBankAccountById(id)
+    suspend fun getAllBankAccountsList(): List<BankAccount> = financeDao.getAllBankAccountsList()
+
     // PENDING SMS TRANSACTIONS
     val allPendingSmsTransactions: Flow<List<PendingSmsTransaction>> = financeDao.getAllPendingSmsTransactions()
     suspend fun insertPendingSmsTransaction(item: PendingSmsTransaction): Long = financeDao.insertPendingSmsTransaction(item)
     suspend fun deletePendingSmsTransaction(item: PendingSmsTransaction) = financeDao.deletePendingSmsTransaction(item)
     suspend fun deletePendingSmsTransactionById(id: Long) = financeDao.deletePendingSmsTransactionById(id)
+    suspend fun clearAllPendingSmsTransactions() = financeDao.clearAllPendingSmsTransactions()
+
+    // PURGE & RESET ACTIONS
+    suspend fun deleteTransactionsByYearMonth(yearMonth: String): Int = financeDao.deleteTransactionsByYearMonth(yearMonth)
+    suspend fun clearAllTransactions() = financeDao.clearAllTransactions()
+
+    suspend fun fullFactoryReset() {
+        financeDao.clearAllTransactions()
+        financeDao.clearAllCreditCards()
+        financeDao.clearAllBankAccounts()
+        financeDao.clearAllAssets()
+        financeDao.clearAllBudgets()
+        financeDao.clearAllSubscriptions()
+        financeDao.clearAllSavingsGoals()
+        financeDao.clearAllBorrowLends()
+        financeDao.clearAllWishlist()
+        financeDao.clearAllCustomCategories()
+        financeDao.clearAllPendingSmsTransactions()
+    }
 }
 

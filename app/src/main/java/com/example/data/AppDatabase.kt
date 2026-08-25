@@ -16,9 +16,10 @@ import androidx.room.RoomDatabase
         Wishlist::class,
         CustomCategory::class,
         CreditCard::class,
+        BankAccount::class,
         PendingSmsTransaction::class
     ],
-    version = 4,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
