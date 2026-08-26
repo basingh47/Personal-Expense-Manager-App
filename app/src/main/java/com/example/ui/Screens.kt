@@ -10609,6 +10609,7 @@ fun SettingsScreen(
     var pendingRestoreJson by remember { mutableStateOf<String?>(null) }
     var pendingRestoreStats by remember { mutableStateOf<BackupStats?>(null) }
     var isExporting by remember { mutableStateOf(false) }
+    var showAppInfoDialog by remember { mutableStateOf(false) }
 
     // PIN App Lock States
     val isPinLockEnabled by appLockManager.isPinLockEnabled.collectAsStateWithLifecycle()
@@ -11560,6 +11561,102 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
+
+        // 5. APP INFO & SYSTEM OVERVIEW
+        item {
+            ElevatedCard(
+                shape = RoundedCornerShape(24.dp),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f).padding(end = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "App Info & Architecture",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "Version 2.4.0 (2026.8 Pro)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "PRO BUILD",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "13 integrated personal finance modules: Ledger, Banks, Category Manager, Budgets, Item & Project Trackers, Subscriptions, Cards, Goals, Debts, Wishlist, Analytics, PDF/Excel Reports, and Security.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+
+                    Button(
+                        onClick = { showAppInfoDialog = true },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("view_app_info_btn")
+                    ) {
+                        Icon(Icons.Default.Feed, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("View Complete System Info & Stats", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
@@ -11935,6 +12032,13 @@ fun SettingsScreen(
             appLockManager = appLockManager,
             currentTimeout = autoLockTimeout,
             onDismiss = { showTimeoutDialog = false }
+        )
+    }
+
+    if (showAppInfoDialog) {
+        AppInfoDialog(
+            viewModel = viewModel,
+            onDismiss = { showAppInfoDialog = false }
         )
     }
 }
@@ -12658,6 +12762,289 @@ private fun DataActionTile(
                 .testTag(testTag)
         ) {
             Text(text = buttonText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+fun AppInfoDialog(
+    viewModel: FinanceViewModel,
+    onDismiss: () -> Unit
+) {
+    val txList by viewModel.transactions.collectAsStateWithLifecycle()
+    val bankList by viewModel.bankAccounts.collectAsStateWithLifecycle()
+    val cardList by viewModel.creditCards.collectAsStateWithLifecycle()
+    val customCatList by viewModel.customCategories.collectAsStateWithLifecycle()
+    val assetList by viewModel.assets.collectAsStateWithLifecycle()
+    val subList by viewModel.subscriptions.collectAsStateWithLifecycle()
+    val goalList by viewModel.savingsGoals.collectAsStateWithLifecycle()
+
+    val txCount = txList.size
+    val bankCount = bankList.size
+    val cardCount = cardList.size
+    val catCount = customCatList.size
+    val trackerCount = assetList.size
+    val subCount = subList.size
+    val goalCount = goalList.size
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(PrimaryEmerald, MaterialTheme.colorScheme.primary)
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountBalanceWallet,
+                                contentDescription = null,
+                                tint = SmoothWhite,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Personal Expense Manager",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "v2.4.0 • Build 2026.8 Pro",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // System Health & Local Storage Stats
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Database & Storage Health",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = GreenIncome.copy(alpha = 0.15f)
+                                ) {
+                                    Text(
+                                        text = "ROOM SQLITE ACTIVE",
+                                        color = GreenIncome,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                AppStatChip("Transactions", "$txCount")
+                                AppStatChip("Banks", "$bankCount")
+                                AppStatChip("Cards", "$cardCount")
+                                AppStatChip("Categories", "$catCount")
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                AppStatChip("Trackers", "$trackerCount")
+                                AppStatChip("Subscriptions", "$subCount")
+                                AppStatChip("Goals", "$goalCount")
+                                AppStatChip("Cloud", "Isolated")
+                            }
+                        }
+                    }
+
+                    // Complete System Capabilities List
+                    Text(
+                        text = "Implemented Modules & Features",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    AppFeatureRow(Icons.Default.Dashboard, "Dashboard Overview", "Live net worth, monthly cash flow, and cash-only mode toggle")
+                    AppFeatureRow(Icons.Default.Receipt, "Transactions Ledger", "Incomes, expenses, inter-account transfers, and refund offsets")
+                    AppFeatureRow(Icons.Default.AccountBalance, "Bank Accounts Hub", "Aggregated balances, custom bank branding, and analytics toggle")
+                    AppFeatureRow(Icons.Default.Category, "Category Manager", "Hierarchical parent categories and custom nested subcategories")
+                    AppFeatureRow(Icons.Default.PieChart, "Monthly Budgets", "Dynamic spending gauges with real-time amber/red threshold alerts")
+                    AppFeatureRow(Icons.Default.FolderSpecial, "Item & Project Trackers", "Unified cost hub for vehicle maintenance, health, trips & gadgets")
+                    AppFeatureRow(Icons.Default.CloudSync, "Subscription Tracker", "Recurring fees, cycle advancing, and proactive renewal notifications")
+                    AppFeatureRow(Icons.Default.CreditCard, "Credit Cards Tracker", "Statement cycles, payment due alerts, and utilization gauges")
+                    AppFeatureRow(Icons.Default.Savings, "Savings & Goals", "Target timelines with interactive +₹500/+₹1,000 progress buttons")
+                    AppFeatureRow(Icons.Default.Handshake, "Borrow & Lend Book", "P2P debt ledgers, repayment statuses, and net balance tracking")
+                    AppFeatureRow(Icons.Default.CardGiftcard, "Wishlist", "Priority purchase planning with 1-click expense conversion")
+                    AppFeatureRow(Icons.Default.QueryStats, "Analytics & Charts", "Category breakdowns, cashflow trajectories, and payment shares")
+                    AppFeatureRow(Icons.Default.Lock, "Security & App Lock", "4-digit PIN lock, auto-lock timeout, and FLAG_SECURE protection")
+                    AppFeatureRow(Icons.Default.Backup, "JSON Backup & Restore", "Full encrypted export and restore with merge or clean overwrite")
+                    AppFeatureRow(Icons.Default.PictureAsPdf, "Audit PDF & Excel Reports", "Multi-page tax statements and tabular spreadsheet exports")
+                    AppFeatureRow(Icons.Default.Sms, "On-Device SMS Engine", "100% local bank debit/credit parsing with real-time review queue")
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Tech Stack Overview
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Technical Stack",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "• Architecture: Clean Architecture / MVVM with StateFlow\n• UI: Jetpack Compose + Material Design 3\n• Persistence: Room SQLite (Offline-First)\n• Cloud: Firebase Auth & Cloud Firestore\n• Security: Android Keystore, Encrypted Preferences",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = onDismiss,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text("Close", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AppStatChip(label: String, value: String) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.padding(horizontal = 4.dp)
+    ) {
+        Text(
+            text = value,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 15.sp,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+fun AppFeatureRow(
+    icon: ImageVector,
+    title: String,
+    description: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
         }
     }
 }

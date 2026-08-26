@@ -1,115 +1,105 @@
-# Personal Finance Tracker with Cloud Sync
+# Personal Expense & Finance Manager
 
-A production-ready, beautiful, and highly comprehensive **Personal Finance Tracker** built using **Kotlin**, **Jetpack Compose (Material Design 3)**, and a **local-first + cloud-synced architecture** (Room SQLite database integrated with Firebase Auth & Firestore).
-
----
-
-## 🎨 Visual Theme & Style
-
-- **Emerald Slate & Gold Accents**: Tailored for an elegant financial theme, featuring dark matte slate surfaces, crisp emerald elements (`#10B981`) for positive cash flows/income, soft crimson (`#EF4444`) for expense tracking, and refined gold accents (`#F59E0B`) for visual callouts and sync elements.
-- **Material 3 Adaptive Design**: Completely fluid layouts leveraging Material Design 3 spacing and container-based dynamic constraints, optimizing perfectly for both compact phone layouts and larger tablet viewports.
-- **Rich Iconography**: Extensive, contextual usage of Material Symbols to enable instant scanning of categories, accounts, cards, and debt types.
+A comprehensive, production-ready **Personal Finance Management System** built with **Kotlin**, **Jetpack Compose (Material Design 3)**, and a **Local-First + Cloud-Synced Architecture** (Room SQLite Database with Firebase Auth & Cloud Firestore).
 
 ---
 
-## 📱 Modules & Screens
+## 🎨 Visual Theme & Design Language
 
-The application features **12 dedicated visual panels** accessible via the secure left-hand navigation drawer:
+- **Emerald Slate & Gold Aesthetics**: Refined financial palette with dark matte slate backgrounds (`#0F172A`), bright emerald accents (`#10B981`) for positive cash flows & income, soft crimson (`#EF4444`) for expense tracking, and gold highlights (`#F59E0B`) for goals and alerts.
+- **Adaptive Material 3 Architecture**: Responsive container layouts and edge-to-edge system insets ensuring seamless usability across compact phones, foldables, and tablets.
+- **Rich Contextual Iconography**: Comprehensive Material Symbols integration across categories, bank accounts, credit cards, debt books, and tracker projects.
+
+---
+
+## 📱 Complete System Modules & Capabilities
+
+The application features **13 dedicated modules** accessible via the secure navigation drawer:
 
 ### 1. Dashboard Overview (`dashboard`)
-- **Net Worth & Monthly Cash Flow**: Summarizes cash inflows, outflows, and remaining funds dynamically.
-- **Cash-Only Mode Toggle**: Allows users to filter out outstanding credit card transactions from their current-month financial metrics to avoid skewing cash flow with debt that is not yet paid. When toggled, only bank/cash transactions and actual credit card bill payments are shown in overall summaries.
-- **Bank SMS Auto-Detection & Staging**: Real-time SMS transaction parser with 1-tap confirmation card at the top of the dashboard, plus an in-app SMS Simulator.
-- **Interactive Reminders**: Displays dynamic billing alerts, unpaid debts, subscription renewals, and custom goals needing attention.
-- **Recent Transactions Ledger**: Quick list of the latest recorded financial activities with visual indicators.
+- **Real-Time Net Worth & Monthly Cash Flow**: Dynamic calculation of total bank balances, active credit card liabilities, monthly income, expenses, and net savings.
+- **Cash-Only Mode Toggle**: Filter out outstanding credit card transactions to view pure bank/cash cashflow without skewed unpaid credit card debt.
+- **Bank SMS Auto-Detection & Review Queue**: Real-time SMS transaction parser with 1-tap confirmation card at the top of the dashboard.
+- **Interactive Action Center**: Timely alerts for upcoming subscription renewals, due debt collections, category budget thresholds, and savings goals.
+- **Recent Activity Ledger**: Chronological feed of recorded entries with one-tap drill-down.
 
 ### 2. Transactions Ledger (`transactions`)
-- **Full Ledger Control**: Add, delete, and view comprehensive list of Incomes, Expenses, Inter-Account Transfers, and Refunds/Reversals.
-- **Inter-Account Fund Transfers**: Move funds between registered bank accounts or settle Credit Card bills without falsely inflating monthly income or expense charts.
-- **Refunds & Reversals**: Log e-commerce returns, merchant refunds, and cashbacks to directly offset category expenditures rather than distorting income analytics.
-- **Intelligent Filtering & Search**: Filter transactions instantly by type (All, Expense, Income, Transfer, Refund), payment methods, bank accounts, parent/subcategories, specific calendar dates, or custom string search.
+- **Full Ledger Operations**: Record and manage Expenses, Incomes, Inter-Account Transfers, and Refunds/Reversals.
+- **Direct Linking**: Link transactions to specific Bank Accounts, Credit Cards, Custom Categories/Subcategories, and Item/Project Trackers.
+- **Inline Entity Creation**: Create new Custom Categories, Subcategories, or Item Trackers on the fly directly inside the Add/Edit Transaction sheet.
+- **Smart Filtering & Search**: Multi-parameter filtering by type, payment method, bank account, date range, tracker, or custom query.
 
 ### 3. Bank Accounts Management (`bank_accounts`)
-- **Net Bank Balance Ledger**: Aggregates all bank accounts into a dynamic single-view total balance, with live inflow (credits) and outflow (debits) metrics.
-- **Bank Identity & Custom Styling**: Color-coded branding cards for major Indian banks (HDFC, SBI, ICICI, Axis, Kotak, PNB, BOB, etc.) with account nicknames and masked numbers (`•••• Last4`).
-- **Granular SMS Detection Toggle**: Turn auto-detection ON or OFF individually per bank account.
-- **Selective Analytics Visibility Toggle**: Choose whether to include or hide specific bank accounts from global dashboard spending summaries and analytics charts.
-- **Inline Transaction History**: Expandable transaction list per bank card, with one-tap pre-linked transaction creation.
+- **Aggregated Bank Balance Hub**: Live total balance across all registered savings and current accounts.
+- **Bank Branding & Styling**: Visual cards for major banks (HDFC, SBI, ICICI, Axis, Kotak, PNB, BOB, etc.) with masked numbers (`•••• Last4`).
+- **Granular SMS Detection**: Toggle auto-detection on or off per bank account.
+- **Selective Analytics Visibility**: Include or exclude specific bank accounts from global dashboard totals and analytics charts.
 
 ### 4. Category Manager (`categories`)
-- **Parent & Subcategory Nesting**: Create custom main categories with custom symbols and nest child subcategories inside them.
-- **Dynamic Cascade Updates**: Modifying a category's metadata automatically updates associated budgets, transactions, and subcategory records in the database.
+- **Hierarchical Category Trees**: Create and customize main expense/income categories with custom icons and nested subcategories.
+- **Cascade Updates**: Automatically updates associated budgets, transactions, and linked trackers when categories change.
 
 ### 5. Monthly Budgets (`budgets`)
-- **Visual Progress Trackers**: Displays relative bars indicating budget limits vs actual spent for each custom category.
-- **Real-Time Limit Gauges**: Warns users with dynamic color shifts (amber/red) as category expenditures approach or exceed set limits.
+- **Category Limit Gauges**: Set spending limits per category with dynamic progress bars and percentage markers.
+- **Visual Threshold Alerts**: Automatic color shifts (Emerald ➔ Amber ➔ Red) as expenses approach or exceed allocated limits.
 
-### 6. Assets & Vehicles (`assets`)
-- **Net Worth Cataloging**: Log financial assets, investments, real estate, tech devices, or vehicles.
-- **Asset Metadata Tracking**: Record purchase prices, purchase dates, serial keys, warranty details, and insurance parameters.
+### 6. Item & Project Trackers — Cost Hub (`assets`)
+- **Cumulative Lifetime Cost Tracking**: Track total maintenance and operational expenses for vehicles, electronics, health treatments, travel trips, or home renovations.
+- **Unified Category Integration**: Organizes trackers using your standard and custom categories.
+- **Metadata & Documentation**: Store target budgets, purchase prices, warranty info, insurance policies, clinic contacts, and service notes.
+- **Detailed Timeline Ledger**: Filter and review every linked transaction logged against the specific asset or project.
 
 ### 7. Subscription Tracker (`subscriptions`)
-- **Recurring Fee Monitor**: Tracks monthly/annual SaaS subscriptions, digital memberships, and recurring services.
-- **Active footprint calculations**: Dynamically displays total periodic overhead cost and renewal calendar alert tickers.
+- **Recurring Fee Monitoring**: Track monthly and annual SaaS subscriptions, memberships, and utility auto-debits.
+- **Proactive Renewal Alerts**: Automatic background checks with multi-tier notifications (3 days prior, 1 day prior, day of renewal).
+- **One-Tap Cycle Advance & Pay**: Fast payment recording and automatic due date rollover.
 
 ### 8. Credit Cards Tracker (`credit_cards`)
-- **Statement & Cycle Trackers**: Input credit limits, last 4 digits, billing/due days.
-- **Dynamic Limit Monitoring**: Tracks outstanding balances against total credit limits to display real-time utilization stats.
+- **Statement & Cycle Management**: Track credit limits, billing cycle dates, payment due dates, and available credit.
+- **Real-Time Utilization Monitoring**: Visual indicators for credit utilization ratio with recommended 30% safety thresholds.
+- **Card Bill Settlement**: Record credit card bill payments as fund transfers from bank accounts without double-counting expenses.
 
 ### 9. Savings & Goals (`savings`)
-- **Interactive Contributions**: Track progress towards specific dreams (e.g., Vacation Fund, Down Payment) with instant increments (e.g. "+$50" button).
-- **Milestone Indicators**: Visually charts the journey toward the goal with progress bars and dynamic percentage markers.
+- **Goal Progress Tracking**: Set target amounts and target dates for emergency funds, vacations, investments, and major purchases.
+- **Interactive Quick-Add Contributions**: One-tap increments (`+₹500`, `+₹1,000`, `+₹5,000`) with visual progress bars.
 
 ### 10. Borrow & Lend Book (`borrow_lend`)
-- **P2P Debt Ledgers**: Track money you have lent to or borrowed from colleagues, friends, or family.
-- **Repayment Calendar & State**: Logs contact names, due dates, repayment status (paid/unpaid), and updates total net debt indicators.
+- **Peer-to-Peer Debt Ledger**: Record money lent to or borrowed from friends, family, or business partners.
+- **Settlement & History**: Track due dates, partial repayments, paid status, and net balance owed/receivable.
 
 ### 11. Wishlist (`wishlist`)
-- **Pre-purchase Cataloging**: Prioritize prospective purchases (High/Medium/Low priority) with estimated pricing and targeting dates.
-- **One-Click Expense Conversion**: Marking a wishlist item as **Purchased** automatically transitions it into an active expense in your Transactions ledger, updating your monthly budgets and cash flow instantly.
+- **Purchase Planning**: Prioritize prospective purchases (High/Medium/Low priority) with target dates and notes.
+- **One-Click Expense Conversion**: Convert wishlist items into active transactions with pre-filled category and price.
 
 ### 12. Analytics & Insights (`analytics`)
-- **Visual Breakdown Charts**: Renders visual distribution analytics, including expense category breakdowns, income-to-expense charts, payment method distribution, and multi-month budget performance trends.
+- **Distribution Charts**: Interactive category spending breakdowns, income vs. expense ratios, and payment method share.
+- **Multi-Month Spending Trends**: Month-over-month cash flow trajectory and category budget adherence.
+
+### 13. Security & App Settings (`settings`)
+- **PIN App Lock**: 4-digit PIN authentication with automatic lock on app minimize / background.
+- **Configurable Auto-Lock Timeouts**: Choose between Immediate, 30 Seconds, 1 Minute, 2 Minutes, or 5 Minutes inactivity timeouts.
+- **Screenshot & Preview Protection**: `FLAG_SECURE` integration to prevent screen recording and Android Recent Apps task switcher previews.
+- **Full JSON Backup & Restore**: Export encrypted portable JSON snapshots and restore with Clean Overwrite or Merge modes.
+- **Professional PDF Financial Statements**: Multi-page audit-ready statement with KPI metrics, category breakdowns, and transaction ledgers.
+- **Tabular CSV / Excel Export**: Raw transaction exports compatible with Microsoft Excel and Google Sheets.
+- **Granular Data Purging**: Delete transactions by specific billing month, clear SMS review queues, or execute full factory reset.
 
 ---
 
-## ☁️ Cloud Sync Architecture & Data Safety
+## 🔒 Security, Privacy & Local-First Philosophy
 
-The app utilizes a state-of-the-art **Offline-First, Cloud-Synced** approach, ensuring zero friction and high availability:
-
-### 💾 Local SQLite Persistence (Room DB)
-- All records are saved instantly to a local, high-performance Room SQLite database.
-- The app remains **100% functional and fast offline**, with no loading indicators or network dependency for day-to-day entries.
-
-### 🔐 Firebase Authentication
-- Secure email & password registration and login options.
-- User status updates are handled via an active auth listener inside the central `FinanceViewModel`.
-
-### 🔄 Bidirectional Firestore Sync
-- When authenticated, all local transactions, budgets, custom categories, credit cards, assets, subscriptions, goals, wishlist items, and peer debts are synced automatically to cloud Firestore.
-- **Multi-Device Cohesion**: Logging in on a new device pulls down all cloud-stored histories and instantly populates the local SQLite tables, making phone switching seamless.
-- **Data Isolation & Sandboxing**: To maintain strict security and complete multi-user compliance, data is securely stored in a sandboxed path unique to each individual user:
-  ```
-  /users/{FirebaseUID}/{CollectionName}/{DocumentID}
-  ```
-- **Security & Privacy**: No user can query, modify, or read data belonging to another user. If a user logs out, the app reverts securely to offline workspace mode.
+- **Zero-Cloud Exposure for SMS**: SMS parsing and message interception execute 100% locally on-device. No raw text messages or SMS contents are ever transmitted over the network.
+- **Offline-First Room SQLite Database**: Instant speed, zero network latency, and complete offline functionality.
+- **Multi-User Isolated Cloud Sync**: When logged in via Firebase Auth, data synchronizes to isolated user paths (`/users/{UID}/...`), guaranteeing strict partition and privacy.
 
 ---
 
-## 📁 Technical Code Structure
+## 🛠️ Tech Stack & Architecture
 
-- `/app/src/main/java/com/example/MainActivity.kt`: Controls the central layout container, dynamic dark/light configuration, navigation drawers, and the user Firebase Auth dialogue wrapper.
-- `/app/src/main/java/com/example/ui/Screens.kt`: Houses the Jetpack Compose user interfaces, alerts, dialogs, charts, and control flows for all 11 modules.
-- `/app/src/main/java/com/example/ui/FinanceViewModel.kt`: Central state manager. Exposes reactive streams (`StateFlow`), handles user registration/sign-in, and coordinates transactional Firestore-SQLite syncing.
-- `/app/src/main/java/com/example/data/Entities.kt`: Models schemas for all database instances: `Transaction`, `Budget`, `Asset`, `Subscription`, `SavingsGoal`, `BorrowLend`, `Wishlist`, `CustomCategory`, `CreditCard`.
-- `/app/src/main/java/com/example/data/FinanceDao.kt` & `FinanceRepository.kt`: Defines the robust room database transactions, queries, inserts, and local delete statements.
-- `/app/src/main/java/com/example/ui/theme/Theme.kt` & `Color.kt`: Material 3 theme configurations, custom palettes, and visual dark-theme properties.
+- **Language**: Kotlin (100%)
+- **UI Framework**: Jetpack Compose with Material Design 3 (M3)
+- **Local Persistence**: Room SQLite with Kotlin Coroutines & Flow
+- **Cloud Backend**: Firebase Authentication & Cloud Firestore
+- **Security**: Android Keystore, SharedPreferences encryption, Biometric/PIN AppLockManager
+- **Architecture**: Clean Architecture / MVVM with reactive `StateFlow` streams
 
----
-
-## 🚀 Confirming Production Readiness
-
-This app is **production-ready and deployable to real-world users**.
-- **Individually Isolated Syncing**: Each user's data is partitioned via their unique Firebase user ID. Multiple users can use the app simultaneously on different phones without overlapping data or security conflicts.
-- **Seamless Local Caching**: Offline-first ensures that even with intermittent internet or zero cellular coverage, the user never suffers from lag or data loss.
-- **Robust Schema Mapping**: Built with custom types and serializable elements, preventing sync bugs or type mismatch errors on high-frequency transactions.
