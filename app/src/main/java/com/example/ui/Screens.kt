@@ -3077,27 +3077,14 @@ fun AddTransactionDialog(
 
                         // Link to Project / Item Tracker (Optional)
                         Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Link to Item / Project Tracker (Optional)", style = MaterialTheme.typography.bodySmall, color = MutedText)
-                                TextButton(
-                                    onClick = { showCreateTrackerInDialog = true },
-                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = PrimaryLightEmerald)
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text("New Tracker", fontSize = 11.sp, color = PrimaryLightEmerald, fontWeight = FontWeight.Bold)
-                                }
-                            }
+                            Text("Link to Item / Project Tracker (Optional)", style = MaterialTheme.typography.bodySmall, color = MutedText)
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -3120,6 +3107,27 @@ fun AddTransactionDialog(
                                             .padding(horizontal = 12.dp, vertical = 8.dp)
                                     ) {
                                         Text("$emoji ${ast.name}", color = if (isSelected) DarkBackground else SmoothWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                // Add Custom Tracker button (matches Category / Subcategory style)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f))
+                                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                        .clickable { showCreateTrackerInDialog = true }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "New Tracker",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("New Tracker", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
