@@ -31,6 +31,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val firebaseAuth = FirebaseAuth.getInstance()
     val firestore = FirebaseFirestore.getInstance()
 
+    private val sharedPrefs = application.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+
     private val _currentUser = MutableStateFlow<FirebaseUser?>(firebaseAuth.currentUser)
     val currentUser = _currentUser.asStateFlow()
 
@@ -92,11 +94,14 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
-            // Populate sample data if DB is completely empty
-            repository.allTransactions.first().let { list ->
+            // Populate sample data ONLY on very first installation, NEVER after user cleared history
+            val hasSeeded = sharedPrefs.getBoolean("has_seeded_sample_data", false)
+            if (!hasSeeded) {
+                val list = repository.allTransactions.first()
                 if (list.isEmpty()) {
                     populateSampleData()
                 }
+                sharedPrefs.edit().putBoolean("has_seeded_sample_data", true).apply()
             }
         }
     }
@@ -152,7 +157,6 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _excludeCreditCards = MutableStateFlow(false)
     val excludeCreditCards = _excludeCreditCards.asStateFlow()
 
-    private val sharedPrefs = getApplication<Application>().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
     private val _isSmsDetectionEnabled = MutableStateFlow(sharedPrefs.getBoolean("sms_detection_enabled", true))
     val isSmsDetectionEnabled = _isSmsDetectionEnabled.asStateFlow()
 
@@ -692,19 +696,26 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteTransactionsByMonth(yearMonth: String, onComplete: ((Int) -> Unit)? = null) {
         viewModelScope.launch {
             val count = repository.deleteTransactionsByYearMonth(yearMonth)
+            sharedPrefs.edit().putBoolean("has_seeded_sample_data", true).apply()
             val user = firebaseAuth.currentUser
             if (user != null) {
                 // Also remove corresponding transactions from firestore
                 try {
                     val snapshot = firestore.collection("users").document(user.uid)
                         .collection("transactions").get().await()
+                    val batch = firestore.batch()
+                    var batchCount = 0
+                    val sdf = SimpleDateFormat("yyyy-MM", Locale.getDefault())
                     for (doc in snapshot.documents) {
                         val dateLong = doc.getLong("date") ?: 0L
-                        val sdf = java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.getDefault())
-                        val docYearMonth = sdf.format(java.util.Date(dateLong))
+                        val docYearMonth = sdf.format(Date(dateLong))
                         if (docYearMonth == yearMonth) {
-                            doc.reference.delete()
+                            batch.delete(doc.reference)
+                            batchCount++
                         }
+                    }
+                    if (batchCount > 0) {
+                        batch.commit().await()
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -724,14 +735,17 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun clearAllTransactionsOnly(onComplete: (() -> Unit)? = null) {
         viewModelScope.launch {
             repository.clearAllTransactions()
+            sharedPrefs.edit().putBoolean("has_seeded_sample_data", true).apply()
             val user = firebaseAuth.currentUser
             if (user != null) {
                 try {
                     val snapshot = firestore.collection("users").document(user.uid)
                         .collection("transactions").get().await()
+                    val batch = firestore.batch()
                     for (doc in snapshot.documents) {
-                        doc.reference.delete()
+                        batch.delete(doc.reference)
                     }
+                    batch.commit().await()
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -744,6 +758,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.fullFactoryReset()
             sharedPrefs.edit().clear().apply()
+            sharedPrefs.edit().putBoolean("has_seeded_sample_data", true).apply()
             _isSmsDetectionEnabled.value = true
             _excludeCreditCards.value = false
             
@@ -752,14 +767,16 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             if (user != null) {
                 try {
                     val collections = listOf(
-                        "transactions", "credit_cards", "assets", "budgets",
+                        "transactions", "credit_cards", "bank_accounts", "assets", "budgets",
                         "subscriptions", "savings_goals", "borrow_lend", "wishlist", "custom_categories"
                     )
                     for (col in collections) {
                         val snap = firestore.collection("users").document(user.uid).collection(col).get().await()
+                        val batch = firestore.batch()
                         for (doc in snap.documents) {
-                            doc.reference.delete()
+                            batch.delete(doc.reference)
                         }
+                        batch.commit().await()
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()

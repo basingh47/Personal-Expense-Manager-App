@@ -108,7 +108,7 @@ class MainActivity : ComponentActivity() {
                     DrawerItem("bank_accounts", "Bank Accounts", Icons.Default.AccountBalance),
                     DrawerItem("categories", "Category Manager", Icons.Default.Category),
                     DrawerItem("budgets", "Monthly Budgets", Icons.Default.PieChart),
-                    DrawerItem("assets", "Assets & Vehicles", Icons.Default.TwoWheeler),
+                    DrawerItem("assets", "Item & Project Trackers", Icons.Default.FolderSpecial),
                     DrawerItem("subscriptions", "Subscription Tracker", Icons.Default.CloudSync),
                     DrawerItem("credit_cards", "Credit Cards Tracker", Icons.Default.CreditCard),
                     DrawerItem("savings", "Savings & Goals", Icons.Default.Savings),

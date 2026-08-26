@@ -2355,6 +2355,7 @@ fun BulkEditDialog(
 fun AddTransactionDialog(
     viewModel: FinanceViewModel,
     transactionToEdit: Transaction? = null,
+    initialAssetId: Long? = null,
     onDismiss: () -> Unit
 ) {
     val assets by viewModel.assets.collectAsStateWithLifecycle()
@@ -2369,12 +2370,13 @@ fun AddTransactionDialog(
     var merchant by remember { mutableStateOf(transactionToEdit?.merchant ?: "") }
     var notes by remember { mutableStateOf(transactionToEdit?.notes ?: "") }
     var tagsString by remember { mutableStateOf(transactionToEdit?.tagsString ?: "") }
-    var selectedAssetId by remember { mutableStateOf<Long?>(transactionToEdit?.assetId) }
+    var selectedAssetId by remember { mutableStateOf<Long?>(transactionToEdit?.assetId ?: initialAssetId) }
     var selectedCreditCardId by remember { mutableStateOf<Long?>(transactionToEdit?.creditCardId) }
     var selectedBankAccountId by remember { mutableStateOf<Long?>(transactionToEdit?.bankAccountId) }
     var selectedToBankAccountId by remember { mutableStateOf<Long?>(transactionToEdit?.toBankAccountId) }
     var selectedToCreditCardId by remember { mutableStateOf<Long?>(transactionToEdit?.toCreditCardId) }
     var transferDestinationType by remember { mutableStateOf(if (transactionToEdit?.toCreditCardId != null) "CARD" else "BANK") }
+    var showCreateTrackerInDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     var selectedDateLong by remember { mutableStateOf(transactionToEdit?.date ?: System.currentTimeMillis()) }
@@ -2619,6 +2621,13 @@ fun AddTransactionDialog(
                 }
             }
         }
+    }
+
+    if (showCreateTrackerInDialog) {
+        AddAssetDialog(
+            viewModel = viewModel,
+            onDismiss = { showCreateTrackerInDialog = false }
+        )
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -3066,38 +3075,51 @@ fun AddTransactionDialog(
                             }
                         }
 
-                        // Link to Asset / Vehicle (Optional)
-                        if (assets.isNotEmpty()) {
-                            Column {
-                                Text("Link to Asset (Optional)", style = MaterialTheme.typography.bodySmall, color = MutedText)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        // Link to Project / Item Tracker (Optional)
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Link to Item / Project Tracker (Optional)", style = MaterialTheme.typography.bodySmall, color = MutedText)
+                                TextButton(
+                                    onClick = { showCreateTrackerInDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                                 ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = PrimaryLightEmerald)
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("New Tracker", fontSize = 11.sp, color = PrimaryLightEmerald, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (selectedAssetId == null) AccentGold else DarkSurfaceVariant)
+                                        .clickable { selectedAssetId = null }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text("None", color = if (selectedAssetId == null) DarkBackground else SmoothWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                assets.forEach { ast ->
+                                    val isSelected = selectedAssetId == ast.id
+                                    val emoji = getAssetCategoryEmoji(ast.type, ast.name)
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(if (selectedAssetId == null) AccentGold else DarkSurfaceVariant)
-                                            .clickable { selectedAssetId = null }
+                                            .background(if (isSelected) AccentGold else DarkSurfaceVariant)
+                                            .clickable { selectedAssetId = ast.id }
                                             .padding(horizontal = 12.dp, vertical = 8.dp)
                                     ) {
-                                        Text("None", color = if (selectedAssetId == null) DarkBackground else SmoothWhite, fontSize = 12.sp)
-                                    }
-
-                                    assets.forEach { ast ->
-                                        val isSelected = selectedAssetId == ast.id
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(if (isSelected) AccentGold else DarkSurfaceVariant)
-                                                .clickable { selectedAssetId = ast.id }
-                                                .padding(horizontal = 12.dp, vertical = 8.dp)
-                                        ) {
-                                            Text(ast.name, color = if (isSelected) DarkBackground else SmoothWhite, fontSize = 12.sp)
-                                        }
+                                        Text("$emoji ${ast.name}", color = if (isSelected) DarkBackground else SmoothWhite, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -3320,46 +3342,234 @@ fun AddTransactionDialog(
     }
 }
 
-// ASSETS / VEHICLE HISTORY TIMELINE TRACKING SCREEN
+// HELPER FUNCTIONS FOR UNIVERSAL ITEM & PROJECT TRACKERS
+fun getAssetCategoryEmoji(type: String, name: String = "", customCategories: List<CustomCategory> = emptyList()): String {
+    // 1. Check if the type matches an existing custom category's icon
+    val matchedCustom = customCategories.firstOrNull { it.name.equals(type, ignoreCase = true) }
+    if (matchedCustom != null && matchedCustom.icon.isNotBlank()) {
+        return matchedCustom.icon
+    }
+    // 2. Check standard categories
+    val standardMatch = (CategoryData.expenseCategories + CategoryData.incomeCategories).firstOrNull { it.name.equals(type, ignoreCase = true) }
+    if (standardMatch != null && standardMatch.icon.isNotBlank()) {
+        return standardMatch.icon
+    }
+
+    val lower = name.lowercase()
+    return when {
+        lower.contains("scooter") || lower.contains("activa") || lower.contains("jupiter") || lower.contains("ola") || lower.contains("ather") || lower.contains("access") -> "🛵"
+        lower.contains("bike") || lower.contains("motorcycle") || lower.contains("bullet") || lower.contains("royal enfield") || lower.contains("pulsar") || lower.contains("ktm") -> "🏍️"
+        lower.contains("car") || lower.contains("swift") || lower.contains("creta") || lower.contains("nexon") || lower.contains("thar") || lower.contains("baleno") || lower.contains("ev") -> "🚗"
+        lower.contains("cycle") || lower.contains("bicycle") -> "🚲"
+        lower.contains("hair") || lower.contains("treatment") || lower.contains("clinic") || lower.contains("derma") || lower.contains("skin") || lower.contains("dental") || lower.contains("teeth") || lower.contains("therapy") || lower.contains("doctor") -> "💇"
+        lower.contains("laptop") || lower.contains("macbook") || lower.contains("computer") || lower.contains("pc") || lower.contains("dell") || lower.contains("thinkpad") -> "💻"
+        lower.contains("phone") || lower.contains("iphone") || lower.contains("pixel") || lower.contains("samsung") || lower.contains("oneplus") || lower.contains("mobile") -> "📱"
+        lower.contains("watch") || lower.contains("apple watch") || lower.contains("smartwatch") -> "⌚"
+        lower.contains("trip") || lower.contains("tour") || lower.contains("vacation") || lower.contains("travel") || lower.contains("goa") || lower.contains("manali") || lower.contains("flight") -> "✈️"
+        lower.contains("wedding") || lower.contains("marriage") || lower.contains("reception") -> "💍"
+        lower.contains("renovation") || lower.contains("interior") || lower.contains("home") || lower.contains("flat") || lower.contains("house") || lower.contains("furniture") -> "🏠"
+        lower.contains("gold") || lower.contains("jewelry") || lower.contains("jewellery") || lower.contains("diamond") || lower.contains("silver") -> "💎"
+        type == "VEHICLE" || type.contains("Vehicle", ignoreCase = true) || type.contains("Transport", ignoreCase = true) -> "🛵"
+        type == "HEALTH_TREATMENT" || type.contains("Health", ignoreCase = true) || type.contains("Medical", ignoreCase = true) -> "💇"
+        type == "ELECTRONICS" || type.contains("Electronic", ignoreCase = true) -> "💻"
+        type == "PROJECT" || type == "TRIP" || type.contains("Travel", ignoreCase = true) -> "🎯"
+        type == "VALUABLE" || type.contains("Investment", ignoreCase = true) -> "💎"
+        else -> "📦"
+    }
+}
+
+fun getAssetTypeBadgeLabel(type: String): String {
+    return when (type) {
+        "VEHICLE" -> "Vehicle & Transport"
+        "HEALTH_TREATMENT", "HEALTH" -> "Health & Treatment"
+        "ELECTRONICS", "DEVICE" -> "Electronics & Tech"
+        "PROJECT", "TRIP" -> "Project & Trip"
+        "VALUABLE" -> "Asset & Valuable"
+        else -> type
+    }
+}
+
+// UNIVERSAL ITEM & PROJECT TRACKERS (COST HUB) SCREEN
 @Composable
 fun AssetsScreen(viewModel: FinanceViewModel) {
     val assets by viewModel.assets.collectAsStateWithLifecycle()
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
+    val customCategories by viewModel.customCategories.collectAsStateWithLifecycle()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedAsset by remember { mutableStateOf<Asset?>(null) }
     var editingAsset by remember { mutableStateOf<Asset?>(null) }
+    var addingExpenseForAssetId by remember { mutableStateOf<Long?>(null) }
+    var selectedFilterCategory by remember { mutableStateOf("ALL") }
+    var searchQuery by remember { mutableStateOf("") }
+
+    // Summary calculations
+    val trackedTransactions = remember(transactions) { transactions.filter { it.assetId != null } }
+    val totalLifetimeSpent = remember(trackedTransactions) { trackedTransactions.sumOf { it.amount } }
+    val totalBudgetOrInitialValue = remember(assets) { assets.sumOf { it.purchasePrice } }
+
+    // Available categories from existing assets
+    val presentCategories = remember(assets) {
+        assets.map { it.type }.distinct()
+    }
+
+    val filteredAssets = remember(assets, selectedFilterCategory, searchQuery) {
+        assets.filter { asset ->
+            val matchesCategory = if (selectedFilterCategory == "ALL") true else {
+                asset.type.equals(selectedFilterCategory, ignoreCase = true) ||
+                (selectedFilterCategory == "VEHICLE" && (asset.type == "VEHICLE" || asset.type.contains("Vehicle", ignoreCase = true) || asset.type.contains("Transport", ignoreCase = true))) ||
+                (selectedFilterCategory == "HEALTH_TREATMENT" && (asset.type == "HEALTH_TREATMENT" || asset.type.contains("Health", ignoreCase = true)))
+            }
+            val matchesSearch = searchQuery.isBlank() || asset.name.contains(searchQuery, ignoreCase = true) || asset.notes.contains(searchQuery, ignoreCase = true)
+            matchesCategory && matchesSearch
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        // Top Title & Add Button
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Valuable Assets & Vehicles",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = SmoothWhite,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "🎯 Item & Project Trackers",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = SmoothWhite
+                )
+                Text(
+                    text = "Track cumulative spend on treatments, vehicles, & projects",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MutedText
+                )
+            }
             Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { showAddDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
                 shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Add", fontSize = 13.sp)
+                Text("New Tracker", fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // High-level Stats Hub Card
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = DarkSurface,
+            border = BorderStroke(1.dp, DarkSurfaceVariant)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Total Tracked Spend", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "₹${String.format(Locale.getDefault(), "%,.0f", totalLifetimeSpent)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = AccentGold
+                    )
+                }
+
+                Box(modifier = Modifier.width(1.dp).height(32.dp).background(DarkSurfaceVariant))
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Active Trackers", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "${assets.size}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = PrimaryLightEmerald
+                    )
+                }
+
+                Box(modifier = Modifier.width(1.dp).height(32.dp).background(DarkSurfaceVariant))
+
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Total Target / Initial", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        "₹${String.format(Locale.getDefault(), "%,.0f", totalBudgetOrInitialValue)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SmoothWhite
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Category Filter Chips Bar (Dynamically populated from existing trackers)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val isAllSelected = selectedFilterCategory == "ALL"
+            FilterChip(
+                selected = isAllSelected,
+                onClick = { selectedFilterCategory = "ALL" },
+                label = { Text("All (${assets.size})", fontSize = 12.sp, fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Normal) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = PrimaryEmerald,
+                    selectedLabelColor = SmoothWhite,
+                    containerColor = DarkSurface,
+                    labelColor = MutedText
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = isAllSelected,
+                    borderColor = DarkSurfaceVariant,
+                    selectedBorderColor = PrimaryEmerald
+                )
+            )
+
+            presentCategories.forEach { catName ->
+                val isSelected = selectedFilterCategory == catName
+                val count = assets.count { it.type == catName }
+                val emoji = getAssetCategoryEmoji(catName, "", customCategories)
+                val badge = getAssetTypeBadgeLabel(catName)
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { selectedFilterCategory = catName },
+                    label = { Text("$emoji $badge ($count)", fontSize = 12.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = PrimaryEmerald,
+                        selectedLabelColor = SmoothWhite,
+                        containerColor = DarkSurface,
+                        labelColor = MutedText
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = isSelected,
+                        borderColor = DarkSurfaceVariant,
+                        selectedBorderColor = PrimaryEmerald
+                    )
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         if (assets.isEmpty()) {
             Box(
@@ -3368,83 +3578,263 @@ fun AssetsScreen(viewModel: FinanceViewModel) {
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Text("No assets registered. Create one to track its timeline cost!", color = MutedText)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Text("🎯", fontSize = 48.sp)
+                    Text(
+                        "No Item or Project Trackers Yet",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SmoothWhite
+                    )
+                    Text(
+                        "Create a tracker for anything you spend on over time (e.g. Scooter, Hair Treatment, Goa Vacation, Laptop, Home Renovation) to see lifetime costs & timeline history!",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MutedText,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = { showAddDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Create Your First Tracker")
+                    }
+                }
+            }
+        } else if (filteredAssets.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No trackers match the selected filter.", color = MutedText)
             }
         } else {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.weight(1f)
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                items(assets) { asset ->
-                    val maintenanceTx = transactions.filter { it.assetId == asset.id }
-                    val totalMaintenance = maintenanceTx.sumOf { it.amount }
+                items(filteredAssets, key = { it.id }) { asset ->
+                    val linkedTx = transactions.filter { it.assetId == asset.id }
+                    val totalSpent = linkedTx.sumOf { it.amount }
+                    val emoji = getAssetCategoryEmoji(asset.type, asset.name, customCategories)
+                    val badgeLabel = getAssetTypeBadgeLabel(asset.type)
+                    val targetBudgetOrPrice = asset.purchasePrice
+                    val hasTarget = targetBudgetOrPrice > 0
 
                     Card(
                         colors = CardDefaults.cardColors(containerColor = DarkSurface),
                         shape = RoundedCornerShape(20.dp),
+                        border = BorderStroke(1.dp, DarkSurfaceVariant),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { selectedAsset = asset }
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
+                            // Top Row: Emoji + Title + Badge + Actions
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.Top
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                                    Text(
-                                        text = if (asset.type == "VEHICLE") "🛵" else "💻",
-                                        fontSize = 24.sp
-                                    )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f).padding(end = 8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(PrimaryEmerald.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(emoji, fontSize = 24.sp)
+                                    }
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(asset.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = SmoothWhite, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text("Bought ${SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(asset.purchaseDate))}", style = MaterialTheme.typography.bodySmall, color = MutedText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            text = asset.name,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = SmoothWhite,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = DarkSurfaceVariant
+                                            ) {
+                                                Text(
+                                                    text = badgeLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = PrimaryLightEmerald,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                            Text(
+                                                text = "Started ${SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(asset.purchaseDate))}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MutedText,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                fontSize = 11.sp
+                                            )
+                                        }
                                     }
                                 }
+
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { editingAsset = asset }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = PrimaryEmerald)
+                                    IconButton(
+                                        onClick = { editingAsset = asset },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = PrimaryLightEmerald, modifier = Modifier.size(18.dp))
                                     }
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     IconButton(
                                         onClick = {
                                             viewModel.requestDeleteConfirmation(
-                                                title = "Delete Asset?",
-                                                message = "Are you sure you want to permanently delete '${asset.name}'?"
+                                                title = "Delete Tracker?",
+                                                message = "Are you sure you want to permanently delete tracker '${asset.name}'? Existing linked transactions will be retained but unlinked."
                                             ) {
                                                 viewModel.deleteAsset(asset)
                                             }
-                                        }
+                                        },
+                                        modifier = Modifier.size(32.dp)
                                     ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = RedExpense)
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = RedExpense, modifier = Modifier.size(18.dp))
                                     }
                                 }
                             }
 
                             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = DarkSurfaceVariant)
 
+                            // Cost Metrics Row
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column {
-                                    Text("Purchase Price", style = MaterialTheme.typography.labelSmall, color = MutedText)
-                                    Text("₹${String.format(Locale.getDefault(), "%,.0f", asset.purchasePrice)}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = SmoothWhite)
+                                    Text("Cumulative Total Spent", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        "₹${String.format(Locale.getDefault(), "%,.0f", totalSpent)}",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AccentGold
+                                    )
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text("Maintenance & Fuel Cost", style = MaterialTheme.typography.labelSmall, color = MutedText)
-                                    Text("₹${String.format(Locale.getDefault(), "%,.0f", totalMaintenance)}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = AccentGold)
+                                    Text("Expenses Logged", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        "${linkedTx.size} entries",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SmoothWhite
+                                    )
                                 }
                             }
-                            
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Click to view full maintenance timeline & insurance details →",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = PrimaryLightEmerald,
-                                fontWeight = FontWeight.Bold
-                            )
+
+                            // Progress Bar if target/budget exists
+                            if (hasTarget) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                val progress = (totalSpent / targetBudgetOrPrice).coerceIn(0.0, 1.0).toFloat()
+                                val isOver = totalSpent > targetBudgetOrPrice
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = if (isOver) "Budget Exceeded!" else "Target Budget / Value: ₹${String.format(Locale.getDefault(), "%,.0f", targetBudgetOrPrice)}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isOver) RedExpense else MutedText
+                                        )
+                                        Text(
+                                            text = "${((totalSpent / targetBudgetOrPrice) * 100).toInt()}%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isOver) RedExpense else PrimaryLightEmerald,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    LinearProgressIndicator(
+                                        progress = { progress },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(6.dp)
+                                            .clip(RoundedCornerShape(3.dp)),
+                                        color = if (isOver) RedExpense else PrimaryEmerald,
+                                        trackColor = DarkSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            // Notes / Details snippet if any
+                            if (asset.notes.isNotBlank() || asset.insuranceDetails.isNotBlank() || asset.warrantyDetails.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                val detailSnippet = listOfNotNull(
+                                    asset.insuranceDetails.takeIf { it.isNotBlank() },
+                                    asset.warrantyDetails.takeIf { it.isNotBlank() },
+                                    asset.notes.takeIf { it.isNotBlank() }
+                                ).joinToString(" • ")
+                                Text(
+                                    text = detailSnippet,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MutedText,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Bottom Card Actions: Add Expense & View Details
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { addingExpenseForAssetId = asset.id },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, PrimaryEmerald),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryLightEmerald),
+                                    contentPadding = PaddingValues(vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Add Expense", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = { selectedAsset = asset },
+                                    modifier = Modifier.weight(1.2f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = DarkSurfaceVariant),
+                                    contentPadding = PaddingValues(vertical = 6.dp)
+                                ) {
+                                    Text("Timeline History →", fontSize = 12.sp, color = SmoothWhite, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
                         }
                     }
                 }
@@ -3468,20 +3858,67 @@ fun AssetsScreen(viewModel: FinanceViewModel) {
         AssetDetailDialog(
             asset = selectedAsset!!,
             transactions = transactions.filter { it.assetId == selectedAsset!!.id },
-            onDismiss = { selectedAsset = null }
+            customCategories = customCategories,
+            onDismiss = { selectedAsset = null },
+            onAddExpense = {
+                val assetId = selectedAsset!!.id
+                selectedAsset = null
+                addingExpenseForAssetId = assetId
+            },
+            onEditAsset = {
+                val current = selectedAsset!!
+                selectedAsset = null
+                editingAsset = current
+            }
+        )
+    }
+
+    if (addingExpenseForAssetId != null) {
+        AddTransactionDialog(
+            viewModel = viewModel,
+            initialAssetId = addingExpenseForAssetId,
+            onDismiss = { addingExpenseForAssetId = null }
         )
     }
 }
 
+// ADD / EDIT UNIVERSAL ITEM OR PROJECT TRACKER DIALOG
 @Composable
 fun AddAssetDialog(
     viewModel: FinanceViewModel,
     assetToEdit: Asset? = null,
     onDismiss: () -> Unit
 ) {
+    val customCategories by viewModel.customCategories.collectAsStateWithLifecycle()
+
+    // Unified categories from Category Manager (Expense categories + Custom categories)
+    val categoriesList = remember(customCategories) {
+        val standard = CategoryData.expenseCategories
+        val customMain = customCategories.filter { it.type == "EXPENSE" && it.parentCategory == null }
+        standard.map { stdCat ->
+            val extraSubs = customCategories.filter { it.parentCategory == stdCat.name }.map { it.name }
+            if (extraSubs.isNotEmpty()) {
+                stdCat.copy(subcategories = stdCat.subcategories + extraSubs)
+            } else {
+                stdCat
+            }
+        } + customMain.map { custCat ->
+            val subs = customCategories.filter { it.parentCategory == custCat.name }.map { it.name }
+            CategoryDef(
+                name = custCat.name,
+                icon = custCat.icon,
+                subcategories = subs
+            )
+        }
+    }
+
     var name by remember { mutableStateOf(assetToEdit?.name ?: "") }
-    var selectedType by remember { mutableStateOf(assetToEdit?.type ?: "VEHICLE") }
-    var price by remember { mutableStateOf(assetToEdit?.purchasePrice?.toString() ?: "") }
+    var selectedCategoryName by remember {
+        mutableStateOf(
+            assetToEdit?.type ?: (categoriesList.firstOrNull()?.name ?: "Transport")
+        )
+    }
+    var price by remember { mutableStateOf(if (assetToEdit?.purchasePrice != null && assetToEdit.purchasePrice > 0) assetToEdit.purchasePrice.toString() else "") }
     var insurance by remember { mutableStateOf(assetToEdit?.insuranceDetails ?: "") }
     var warranty by remember { mutableStateOf(assetToEdit?.warrantyDetails ?: "") }
     var notes by remember { mutableStateOf(assetToEdit?.notes ?: "") }
@@ -3490,81 +3927,101 @@ fun AddAssetDialog(
         Card(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = BorderStroke(1.dp, DarkSurfaceVariant),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 20.dp)
+                .padding(vertical = 16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier.padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 Text(
-                    text = if (assetToEdit != null) "Edit Asset" else "Add New Asset",
+                    text = if (assetToEdit != null) "Edit Tracker" else "New Item / Project Tracker",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = SmoothWhite
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { selectedType = "VEHICLE" },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (selectedType == "VEHICLE") PrimaryEmerald else DarkSurfaceVariant),
-                        modifier = Modifier.weight(1f)
+                Text(
+                    text = "Track cumulative expenses on your vehicle, health treatment, trip, or gadget using your existing categories.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MutedText
+                )
+
+                // Category Selection from unified Category Manager
+                Column {
+                    Text("Select Category", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Vehicle")
-                    }
-                    Button(
-                        onClick = { selectedType = "ELECTRONICS" },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (selectedType == "ELECTRONICS") PrimaryEmerald else DarkSurfaceVariant),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Device / Other")
+                        categoriesList.forEach { cat ->
+                            val isSelected = selectedCategoryName.equals(cat.name, ignoreCase = true) ||
+                                (selectedCategoryName == "VEHICLE" && cat.name.contains("Transport", ignoreCase = true)) ||
+                                (selectedCategoryName == "HEALTH_TREATMENT" && cat.name.contains("Health", ignoreCase = true))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isSelected) PrimaryEmerald else DarkSurfaceVariant)
+                                    .clickable { selectedCategoryName = cat.name }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text("${cat.icon} ${cat.name}", color = SmoothWhite, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
+                            }
+                        }
                     }
                 }
 
+                // Name Input
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Asset Name (e.g. Ola Scooter)", color = MutedText) },
+                    label = { Text("Tracker / Item Name (e.g. Activa 6G, Hair Treatment, Goa Trip)", color = MutedText) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                 )
 
+                // Budget / Initial Cost Input (Optional)
                 OutlinedTextField(
                     value = price,
                     onValueChange = { price = it },
-                    label = { Text("Purchase Price (₹)", color = MutedText) },
+                    label = { Text("Target Budget or Initial Cost (₹) - Optional", color = MutedText) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                 )
 
+                // Doctor / Clinic / Insurance / Policy info
                 OutlinedTextField(
                     value = insurance,
                     onValueChange = { insurance = it },
-                    label = { Text("Insurance details", color = MutedText) },
+                    label = { Text("Policy / Clinic / Contact Info (Optional)", color = MutedText) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                 )
 
+                // Warranty / Schedule info
                 OutlinedTextField(
                     value = warranty,
                     onValueChange = { warranty = it },
-                    label = { Text("Warranty details", color = MutedText) },
+                    label = { Text("Warranty / Schedule / Protocol (Optional)", color = MutedText) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                 )
 
+                // Additional Notes
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notes", color = MutedText) },
+                    label = { Text("General Notes & Reminders", color = MutedText) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                 )
@@ -3582,22 +4039,22 @@ fun AddAssetDialog(
                             if (name.isNotBlank()) {
                                 val asset = if (assetToEdit != null) {
                                     assetToEdit.copy(
-                                        name = name,
-                                        type = selectedType,
+                                        name = name.trim(),
+                                        type = selectedCategoryName,
                                         purchasePrice = prVal,
-                                        insuranceDetails = insurance,
-                                        warrantyDetails = warranty,
-                                        notes = notes
+                                        insuranceDetails = insurance.trim(),
+                                        warrantyDetails = warranty.trim(),
+                                        notes = notes.trim()
                                     )
                                 } else {
                                     Asset(
-                                        name = name,
-                                        type = selectedType,
+                                        name = name.trim(),
+                                        type = selectedCategoryName,
                                         purchasePrice = prVal,
                                         purchaseDate = System.currentTimeMillis(),
-                                        insuranceDetails = insurance,
-                                        warrantyDetails = warranty,
-                                        notes = notes
+                                        insuranceDetails = insurance.trim(),
+                                        warrantyDetails = warranty.trim(),
+                                        notes = notes.trim()
                                     )
                                 }
                                 viewModel.addAsset(asset)
@@ -3607,7 +4064,7 @@ fun AddAssetDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Save")
+                        Text(if (assetToEdit != null) "Update" else "Save Tracker", color = SmoothWhite, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -3615,82 +4072,224 @@ fun AddAssetDialog(
     }
 }
 
-// ASSET HISTORY VERTICAL TIMELINE DIALOG
+// UNIVERSAL ITEM / PROJECT TIMELINE DRILLDOWN DIALOG
 @Composable
 fun AssetDetailDialog(
     asset: Asset,
     transactions: List<Transaction>,
-    onDismiss: () -> Unit
+    customCategories: List<CustomCategory> = emptyList(),
+    onDismiss: () -> Unit,
+    onAddExpense: () -> Unit = {},
+    onEditAsset: () -> Unit = {}
 ) {
+    val totalSpent = remember(transactions) { transactions.sumOf { it.amount } }
+    val emoji = getAssetCategoryEmoji(asset.type, asset.name, customCategories)
+    val badgeLabel = getAssetTypeBadgeLabel(asset.type)
+    val targetBudgetOrPrice = asset.purchasePrice
+    val hasTarget = targetBudgetOrPrice > 0
+
+    // Grouping by Subcategory/Category to show spend breakdown
+    val categoryBreakdown = remember(transactions) {
+        transactions.groupBy { if (it.subcategory.isNotBlank()) it.subcategory else it.category }
+            .mapValues { entry -> entry.value.sumOf { it.amount } }
+            .toList()
+            .sortedByDescending { it.second }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
         Card(
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = BorderStroke(1.dp, DarkSurfaceVariant),
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.85f)
+                .fillMaxHeight(0.9f)
         ) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                // Header
-                Text(
-                    text = asset.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = SmoothWhite
-                )
-                Text(
-                    text = "Total maintenance: ₹${transactions.sumOf { it.amount }}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = AccentGold,
-                    fontWeight = FontWeight.Bold
-                )
+            Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+                // Header Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(PrimaryEmerald.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(emoji, fontSize = 22.sp)
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = asset.name,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = SmoothWhite,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "$badgeLabel • Started ${SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(asset.purchaseDate))}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MutedText
+                            )
+                        }
+                    }
+                    IconButton(onClick = onEditAsset) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = PrimaryLightEmerald)
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = MutedText)
+                    }
+                }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Scrollable content
+                // Scrollable Content
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // Insurance details card
-                    if (asset.insuranceDetails.isNotBlank()) {
-                        Box(
+                    // 3-Stat Summary Grid
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, DarkSurfaceVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(DarkSurfaceVariant)
-                                .padding(12.dp)
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
-                                Text("🛡️ Insurance Policy Info", style = MaterialTheme.typography.bodySmall, color = AccentGold, fontWeight = FontWeight.Bold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(asset.insuranceDetails, style = MaterialTheme.typography.bodyMedium, color = SmoothWhite)
+                                Text("Total Spent", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("₹${String.format(Locale.getDefault(), "%,.0f", totalSpent)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = AccentGold)
+                            }
+                            Box(modifier = Modifier.width(1.dp).height(30.dp).background(DarkSurfaceVariant))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Transactions", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("${transactions.size}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = SmoothWhite)
+                            }
+                            if (hasTarget) {
+                                Box(modifier = Modifier.width(1.dp).height(30.dp).background(DarkSurfaceVariant))
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("Target / Limit", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text("₹${String.format(Locale.getDefault(), "%,.0f", targetBudgetOrPrice)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = PrimaryLightEmerald)
+                                }
                             }
                         }
                     }
 
-                    // Timeline Title
-                    Text("Maintenance & Service Timeline", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = SmoothWhite)
+                    // Spend Breakdown by Category / Purpose
+                    if (categoryBreakdown.isNotEmpty()) {
+                        Column {
+                            Text("📊 Spend Breakdown", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = SmoothWhite)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                categoryBreakdown.forEach { (catName, amount) ->
+                                    val pct = if (totalSpent > 0) ((amount / totalSpent) * 100).toInt() else 0
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = DarkBackground,
+                                        border = BorderStroke(1.dp, DarkSurfaceVariant)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(catName, style = MaterialTheme.typography.bodySmall, color = SmoothWhite, fontWeight = FontWeight.Medium)
+                                            Text("₹${String.format(Locale.getDefault(), "%,.0f", amount)} ($pct%)", style = MaterialTheme.typography.labelSmall, color = AccentGold, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Contact / Doctor / Insurance Info
+                    if (asset.insuranceDetails.isNotBlank() || asset.warrantyDetails.isNotBlank() || asset.notes.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = DarkBackground,
+                            border = BorderStroke(1.dp, DarkSurfaceVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (asset.insuranceDetails.isNotBlank()) {
+                                    Text("📋 Details & Policy:", style = MaterialTheme.typography.labelSmall, color = AccentGold, fontWeight = FontWeight.Bold)
+                                    Text(asset.insuranceDetails, style = MaterialTheme.typography.bodySmall, color = SmoothWhite)
+                                }
+                                if (asset.warrantyDetails.isNotBlank()) {
+                                    Text("⏱️ Schedule & Timeline:", style = MaterialTheme.typography.labelSmall, color = PrimaryLightEmerald, fontWeight = FontWeight.Bold)
+                                    Text(asset.warrantyDetails, style = MaterialTheme.typography.bodySmall, color = SmoothWhite)
+                                }
+                                if (asset.notes.isNotBlank()) {
+                                    Text("📝 Notes:", style = MaterialTheme.typography.labelSmall, color = MutedText, fontWeight = FontWeight.Bold)
+                                    Text(asset.notes, style = MaterialTheme.typography.bodySmall, color = SmoothWhite)
+                                }
+                            }
+                        }
+                    }
+
+                    // Chronological Timeline Title
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("📅 Expense Timeline History", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = SmoothWhite)
+                        Text("${transactions.size} records", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                    }
 
                     if (transactions.isEmpty()) {
-                        Text("No recorded maintenance history. Add transactions linking to this asset to build your timeline history!", color = MutedText, style = MaterialTheme.typography.bodySmall)
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = DarkBackground,
+                            border = BorderStroke(1.dp, DarkSurfaceVariant),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("No expenses recorded for this tracker yet.", color = MutedText, style = MaterialTheme.typography.bodySmall)
+                                Text("Tap '+ Record Expense' below to add your first expense!", color = PrimaryLightEmerald, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
                     } else {
-                        // Custom Vertical Timeline
+                        // Chronological vertical timeline list
                         Column {
-                            transactions.sortedBy { it.date }.forEachIndexed { index, tx ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
+                            transactions.sortedByDescending { it.date }.forEachIndexed { index, tx ->
+                                Row(modifier = Modifier.fillMaxWidth()) {
                                     // Bullet line
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.width(32.dp)
+                                        modifier = Modifier.width(28.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(12.dp)
+                                                .size(10.dp)
                                                 .clip(CircleShape)
                                                 .background(PrimaryLightEmerald)
                                         )
@@ -3698,38 +4297,71 @@ fun AssetDetailDialog(
                                             Box(
                                                 modifier = Modifier
                                                     .width(2.dp)
-                                                    .height(70.dp)
-                                                    .background(SecondarySage)
+                                                    .height(65.dp)
+                                                    .background(DarkSurfaceVariant)
                                             )
                                         }
                                     }
 
-                                    // Timeline contents card
-                                    Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                                        Text(
-                                            text = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date(tx.date)),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = AccentGold,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "${tx.subcategory} • ₹${tx.amount}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = SmoothWhite
-                                        )
-                                        if (tx.notes.isNotBlank()) {
+                                    // Timeline card
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = DarkBackground,
+                                        border = BorderStroke(1.dp, DarkSurfaceVariant),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 10.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(Date(tx.date)),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = AccentGold,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "₹${String.format(Locale.getDefault(), "%,.0f", tx.amount)}",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = RedExpense
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(2.dp))
+
                                             Text(
-                                                text = tx.notes,
+                                                text = if (tx.subcategory.isNotBlank()) "${tx.category} • ${tx.subcategory}" else tx.category,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MutedText
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = SmoothWhite
                                             )
+
+                                            if (tx.merchant.isNotBlank() || tx.paymentMethod.isNotBlank()) {
+                                                val details = listOfNotNull(
+                                                    tx.merchant.takeIf { it.isNotBlank() }?.let { "At $it" },
+                                                    tx.paymentMethod.takeIf { it.isNotBlank() }?.let { "via $it" }
+                                                ).joinToString(" • ")
+                                                Text(
+                                                    text = details,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MutedText
+                                                )
+                                            }
+
+                                            if (tx.notes.isNotBlank()) {
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = tx.notes,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MutedText
+                                                )
+                                            }
                                         }
-                                        Text(
-                                            text = "Paid via ${tx.paymentMethod} at ${tx.merchant}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MutedText
-                                        )
                                     }
                                 }
                             }
@@ -3737,13 +4369,32 @@ fun AssetDetailDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = onDismiss,
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
-                    modifier = Modifier.fillMaxWidth()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Bottom Dialog Actions
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Done")
+                    Button(
+                        onClick = onAddExpense,
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Record Expense", fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, DarkSurfaceVariant),
+                        modifier = Modifier.weight(0.5f)
+                    ) {
+                        Text("Done", color = SmoothWhite)
+                    }
                 }
             }
         }
@@ -4795,51 +5446,56 @@ fun SubscriptionsScreen(viewModel: FinanceViewModel) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 5.dp),
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(DarkSurfaceVariant.copy(alpha = 0.5f))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.weight(1f).padding(end = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
                                 ) {
-                                    Text(
-                                        text = "• ${sub.name}",
-                                        fontWeight = FontWeight.Bold,
-                                        color = SmoothWhite,
-                                        fontSize = 13.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = "(₹${sub.cost.toInt()})",
-                                        color = PrimaryLightEmerald,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "• ${sub.name}",
+                                            fontWeight = FontWeight.Bold,
+                                            color = SmoothWhite,
+                                            fontSize = 13.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
+                                        )
+                                        Text(
+                                            text = "(₹${sub.cost.toInt()})",
+                                            color = PrimaryLightEmerald,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = SubscriptionNotificationHelper.getFormattedDaysLeft(days),
                                         color = if (days <= 1) RedExpense else AccentGold,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 11.sp
                                     )
-                                    Button(
-                                        onClick = { payingSub = sub },
-                                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
-                                        shape = RoundedCornerShape(8.dp),
-                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                        modifier = Modifier.height(32.dp)
-                                    ) {
-                                        Text("Pay", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                }
+                                Button(
+                                    onClick = { payingSub = sub },
+                                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Text("Pay", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SmoothWhite)
                                 }
                             }
+                            Spacer(modifier = Modifier.height(4.dp))
                         }
                     }
                 }
@@ -10939,7 +11595,7 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text(
-                        text = "Select a specific billing month to permanently delete all associated expenses and incomes.",
+                        text = "Select a specific billing month to permanently delete all associated expenses and incomes from both local storage and cloud database.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -10984,7 +11640,7 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         viewModel.deleteTransactionsByMonth(selectedMonth) { deletedCount ->
-                            Toast.makeText(context, "Deleted $deletedCount transactions for $selectedMonth", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "Deleted $deletedCount transactions for $selectedMonth (Local & Cloud)", Toast.LENGTH_LONG).show()
                             showDeleteMonthDialog = false
                         }
                     },
@@ -11083,7 +11739,7 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "This will permanently wipe ALL recorded expenses and incomes across all time, and reset your credit card current balances to ₹0.00.\n\nYour credit cards, budgets, and savings goals will remain saved.",
+                        text = "This will permanently wipe ALL recorded expenses and incomes across all time from both local device and cloud sync, and reset credit card balances to ₹0.00.\n\nYour accounts, cards, and categories will remain saved.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -11107,7 +11763,7 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         viewModel.clearAllTransactionsOnly {
-                            Toast.makeText(context, "All transactions cleared & balances reset", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "All transactions cleared from local & cloud", Toast.LENGTH_LONG).show()
                             showClearTransactionsDialog = false
                         }
                     },
@@ -11155,7 +11811,7 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "⚠️ WARNING: This will permanently erase ALL data in the app:\n• All Transactions & Ledgers\n• All Credit Cards & Balances\n• All Budgets, Goals, Debts & Subscriptions\n• All Custom Categories & Wishlists\n• App Preferences & Staging Queues",
+                        text = "⚠️ WARNING: This will permanently erase ALL data across local storage and cloud database:\n• All Transactions & Ledgers\n• All Bank Accounts & Credit Cards\n• All Budgets, Goals, Debts & Subscriptions\n• All Custom Categories & Wishlists\n• App Preferences & Staging Queues",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         lineHeight = 18.sp
@@ -11180,7 +11836,7 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         viewModel.executeFullFactoryReset {
-                            Toast.makeText(context, "App completely reset to factory state", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "App completely reset (Local & Cloud)", Toast.LENGTH_LONG).show()
                             showFactoryResetDialog = false
                         }
                     },
