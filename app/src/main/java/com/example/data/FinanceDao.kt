@@ -121,6 +121,9 @@ interface FinanceDao {
     @Query("SELECT * FROM custom_categories")
     fun getAllCustomCategories(): Flow<List<CustomCategory>>
 
+    @Query("SELECT * FROM custom_categories")
+    suspend fun getAllCustomCategoriesList(): List<CustomCategory>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCustomCategory(category: CustomCategory): Long
 

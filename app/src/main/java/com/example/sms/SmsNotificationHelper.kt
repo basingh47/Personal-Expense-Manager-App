@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.PendingSmsTransaction
+import com.example.ui.util.NumberFormatConfig
 
 object SmsNotificationHelper {
 
@@ -62,7 +63,7 @@ object SmsNotificationHelper {
             )
 
             val sign = if (tx.type == "INCOME") "+" else "-"
-            val formattedAmount = "$sign ₹${String.format("%.2f", tx.amount)}"
+            val formattedAmount = "$sign ${NumberFormatConfig.formatAmount(tx.amount)}"
             val title = "⚡ $formattedAmount detected: ${tx.merchant}"
             val subtitle = "Paid via ${tx.paymentMethod} • Suggested: ${tx.suggestedCategory}"
             val expandedText = "$subtitle\n\nOriginal SMS:\n\"${tx.rawBody}\"\n\nTap to open Expense Manager and confirm category."

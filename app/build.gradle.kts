@@ -1,4 +1,7 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.io.FileInputStream
+import java.util.Base64
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -21,15 +24,47 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    ndk {
+      abiFilters.addAll(listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64"))
+    }
+  }
+
+  val keystorePropertiesFile = rootProject.file("keystore.properties")
+  val keystoreProperties = Properties()
+  if (keystorePropertiesFile.exists()) {
+    FileInputStream(keystorePropertiesFile).use { stream ->
+      keystoreProperties.load(stream)
+    }
+  }
+
+  val defaultKeystore = rootProject.file("release-upload-key.jks")
+  val defaultKeystoreB64 = rootProject.file("release-upload-key.jks.base64")
+  if (!defaultKeystore.exists() && defaultKeystoreB64.exists()) {
+    val decoded = Base64.getDecoder().decode(defaultKeystoreB64.readText().trim())
+    defaultKeystore.writeBytes(decoded)
   }
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
+      val customPath: String? = System.getenv("KEYSTORE_PATH") ?: keystoreProperties.getProperty("storeFile")
+      val keystoreFile = if (customPath != null && customPath.isNotBlank()) {
+        val configuredFile = file(customPath)
+        val rootFile = rootProject.file(customPath)
+        if (configuredFile.exists()) configuredFile else rootFile
+      } else {
+        defaultKeystore
+      }
+      storeFile = keystoreFile
       storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
+        ?: keystoreProperties.getProperty("storePassword")
+        ?: "releasepass123"
+      keyAlias = System.getenv("KEY_ALIAS")
+        ?: keystoreProperties.getProperty("keyAlias")
+        ?: "releaseKey"
       keyPassword = System.getenv("KEY_PASSWORD")
+        ?: keystoreProperties.getProperty("keyPassword")
+        ?: "releasepass123"
     }
     create("debugConfig") {
       storeFile = file("${rootDir}/debug.keystore")
@@ -41,6 +76,7 @@ android {
 
   buildTypes {
     release {
+      isDebuggable = false
       isCrunchPngs = false
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

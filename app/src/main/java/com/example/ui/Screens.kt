@@ -1,5 +1,12 @@
 package com.example.ui
 
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.window.DialogProperties
+import com.example.ui.util.NumberFormatConfig
+import com.example.ui.util.CurrencyOption
+
+import com.example.ui.util.AmountVisualTransformation
+
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -317,14 +324,14 @@ fun DashboardScreen(
                 ) {
                     MetricCard(
                         title = "Today's Spending",
-                        amount = "₹${String.format(Locale.getDefault(), "%,.2f", todaySpent)}",
+                        amount = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", todaySpent)}",
                         icon = Icons.Default.Today,
                         accentColor = RedExpense,
                         modifier = Modifier.weight(1f)
                     )
                     MetricCard(
                         title = "This Month",
-                        amount = "₹${String.format(Locale.getDefault(), "%,.2f", monthSpent)}",
+                        amount = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", monthSpent)}",
                         icon = Icons.Default.Payments,
                         accentColor = RedExpense,
                         modifier = Modifier.weight(1f)
@@ -337,14 +344,14 @@ fun DashboardScreen(
                 ) {
                     MetricCard(
                         title = "This Month Income",
-                        amount = "₹${String.format(Locale.getDefault(), "%,.2f", monthIncome)}",
+                        amount = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", monthIncome)}",
                         icon = Icons.Default.AccountBalanceWallet,
                         accentColor = GreenIncome,
                         modifier = Modifier.weight(1f)
                     )
                     MetricCard(
                         title = "Net Savings",
-                        amount = "₹${String.format(Locale.getDefault(), "%,.2f", currentSavings)}",
+                        amount = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", currentSavings)}",
                         icon = Icons.Default.Savings,
                         accentColor = if (currentSavings >= 0) GreenIncome else RedExpense,
                         modifier = Modifier.weight(1f)
@@ -401,7 +408,7 @@ fun DashboardScreen(
                     ) {
                         Column {
                             Text("Daily Average", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("₹${String.format(Locale.getDefault(), "%.0f", dailyAvg)}/day", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            Text("${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%.0f", dailyAvg)}/day", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                         }
                         
                         Column(horizontalAlignment = Alignment.End) {
@@ -438,7 +445,7 @@ fun DashboardScreen(
                                 Text("Highest Single Expense", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(hExp.merchant, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                             }
-                            Text("₹${hExp.amount}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = RedExpense)
+                            Text("${NumberFormatConfig.currencySymbol}${hExp.amount}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = RedExpense)
                         }
                     }
                 }
@@ -547,10 +554,9 @@ fun DashboardScreen(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            val budgetSpendings by viewModel.budgetCategorySpendings.collectAsStateWithLifecycle()
                             budgets.take(2).forEach { budget ->
-                                val spent = transactions
-                                    .filter { it.type == "EXPENSE" && it.category == budget.category }
-                                    .sumOf { it.amount }
+                                val spent = budgetSpendings[budget.category] ?: 0.0
                                 BudgetProgressRow(
                                     budget = budget,
                                     spent = spent,
@@ -610,7 +616,7 @@ fun DashboardScreen(
                                 onDeleteClick = {
                                     viewModel.requestDeleteConfirmation(
                                         title = "Delete Transaction?",
-                                        message = "Are you sure you want to permanently delete this transaction for ₹${tx.amount} (${tx.category})?"
+                                        message = "Are you sure you want to permanently delete this transaction for ${NumberFormatConfig.currencySymbol}${tx.amount} (${tx.category})?"
                                     ) {
                                         viewModel.deleteTransaction(tx)
                                     }
@@ -761,7 +767,7 @@ fun ReminderRowItem(reminder: ReminderItem) {
                 }
             }
             Text(
-                text = "₹${reminder.amount}",
+                text = "${NumberFormatConfig.currencySymbol}${reminder.amount}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -792,7 +798,7 @@ fun BudgetProgressRow(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "₹${spent.toInt()} of ₹${budget.limitAmount.toInt()}",
+                text = "${NumberFormatConfig.currencySymbol}${spent.toInt()} of ${NumberFormatConfig.currencySymbol}${budget.limitAmount.toInt()}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -818,7 +824,7 @@ fun BudgetProgressRow(
                 color = if (percent >= 1.0) RedExpense else MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
-                text = "₹${remaining.toInt()} left",
+                text = "${NumberFormatConfig.currencySymbol}${remaining.toInt()} left",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (remaining < 0) RedExpense else GreenIncome
             )
@@ -967,10 +973,10 @@ fun TransactionListItem(
                 // Amount
                 Text(
                     text = when (transaction.type) {
-                        "INCOME" -> "+₹${transaction.amount}"
-                        "TRANSFER" -> "⇄ ₹${transaction.amount}"
-                        "REFUND" -> "↩ +₹${transaction.amount}"
-                        else -> "-₹${transaction.amount}"
+                        "INCOME" -> "+${NumberFormatConfig.currencySymbol}${transaction.amount}"
+                        "TRANSFER" -> "⇄ ${NumberFormatConfig.currencySymbol}${transaction.amount}"
+                        "REFUND" -> "↩ +${NumberFormatConfig.currencySymbol}${transaction.amount}"
+                        else -> "-${NumberFormatConfig.currencySymbol}${transaction.amount}"
                     },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.ExtraBold,
@@ -1325,7 +1331,7 @@ fun TransactionsScreen(viewModel: FinanceViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 10.dp),
-                placeholder = { Text("Search merchants, #tags, notes, ₹amount...", fontSize = 13.sp, color = MutedText) },
+                placeholder = { Text("Search merchants, #tags, notes, amount...", fontSize = 13.sp, color = MutedText) },
                 leadingIcon = {
                     Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                 },
@@ -1573,7 +1579,7 @@ fun TransactionsScreen(viewModel: FinanceViewModel) {
                             onDeleteClick = {
                                 viewModel.requestDeleteConfirmation(
                                     title = "Delete Transaction?",
-                                    message = "Are you sure you want to permanently delete this transaction for ₹${tx.amount} (${tx.category})?"
+                                    message = "Are you sure you want to permanently delete this transaction for ${NumberFormatConfig.currencySymbol}${tx.amount} (${tx.category})?"
                                 ) {
                                     viewModel.deleteTransaction(tx)
                                 }
@@ -1871,14 +1877,14 @@ fun TagProjectsDialog(
 
                                         Column(horizontalAlignment = Alignment.End) {
                                             Text(
-                                                text = "₹${summary.totalExpense.toInt()}",
+                                                text = "${NumberFormatConfig.currencySymbol}${summary.totalExpense.toInt()}",
                                                 style = MaterialTheme.typography.titleLarge,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                             if (summary.totalIncome > 0) {
                                                 Text(
-                                                    text = "Net: ₹${summary.netSpent.toInt()}",
+                                                    text = "Net: ${NumberFormatConfig.currencySymbol}${summary.netSpent.toInt()}",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = if (summary.netSpent < 0) GreenIncome else RedExpense,
                                                     fontWeight = FontWeight.Bold
@@ -1934,7 +1940,7 @@ fun TagProjectsDialog(
                                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                                 ) {
                                                     Text(
-                                                        text = "${viewModel.getIconForCategory(cat)} $cat: ₹${amount.toInt()}",
+                                                        text = "${viewModel.getIconForCategory(cat)} $cat: ${NumberFormatConfig.currencySymbol}${amount.toInt()}",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.onSurface
                                                     )
@@ -1953,8 +1959,8 @@ fun TagProjectsDialog(
                                     ) {
                                         TextButton(
                                             onClick = {
-                                                val breakdownText = summary.categoryBreakdown.entries.joinToString("\n") { "  • ${it.key}: ₹${it.value.toInt()}" }
-                                                val shareText = "📊 Project Cost Summary: ${summary.tag}\nTotal Spent: ₹${summary.totalExpense.toInt()}\nTransactions: ${summary.transactionCount}\nTimeline: $dateRangeStr\n\nBreakdown:\n$breakdownText"
+                                                val breakdownText = summary.categoryBreakdown.entries.joinToString("\n") { "  • ${it.key}: ${NumberFormatConfig.currencySymbol}${it.value.toInt()}" }
+                                                val shareText = "📊 Project Cost Summary: ${summary.tag}\nTotal Spent: ${NumberFormatConfig.currencySymbol}${summary.totalExpense.toInt()}\nTransactions: ${summary.transactionCount}\nTimeline: $dateRangeStr\n\nBreakdown:\n$breakdownText"
                                                 val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                                 val clip = android.content.ClipData.newPlainText("Project Cost Summary", shareText)
                                                 clipboard.setPrimaryClip(clip)
@@ -2755,9 +2761,10 @@ fun AddTransactionDialog(
                     // Amount
                     OutlinedTextField(
                         value = amount,
-                        onValueChange = { amount = it },
-                        label = { Text("Amount (₹)", color = MutedText) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        onValueChange = { amount = AmountVisualTransformation.sanitizeAmountInput(it) },
+                        label = { Text("Amount (${NumberFormatConfig.currencySymbol})", color = MutedText) },
+                        visualTransformation = AmountVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
@@ -3489,7 +3496,7 @@ fun AssetsScreen(viewModel: FinanceViewModel) {
                     Text("Total Tracked Spend", style = MaterialTheme.typography.labelSmall, color = MutedText)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        "₹${String.format(Locale.getDefault(), "%,.0f", totalLifetimeSpent)}",
+                        "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", totalLifetimeSpent)}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
                         color = AccentGold
@@ -3515,7 +3522,7 @@ fun AssetsScreen(viewModel: FinanceViewModel) {
                     Text("Total Target / Initial", style = MaterialTheme.typography.labelSmall, color = MutedText)
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        "₹${String.format(Locale.getDefault(), "%,.0f", totalBudgetOrInitialValue)}",
+                        "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", totalBudgetOrInitialValue)}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = SmoothWhite
@@ -3743,7 +3750,7 @@ fun AssetsScreen(viewModel: FinanceViewModel) {
                                     Text("Cumulative Total Spent", style = MaterialTheme.typography.labelSmall, color = MutedText)
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        "₹${String.format(Locale.getDefault(), "%,.0f", totalSpent)}",
+                                        "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", totalSpent)}",
                                         style = MaterialTheme.typography.titleLarge,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = AccentGold
@@ -3772,7 +3779,7 @@ fun AssetsScreen(viewModel: FinanceViewModel) {
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            text = if (isOver) "Budget Exceeded!" else "Target Budget / Value: ₹${String.format(Locale.getDefault(), "%,.0f", targetBudgetOrPrice)}",
+                                            text = if (isOver) "Budget Exceeded!" else "Target Budget / Value: ${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", targetBudgetOrPrice)}",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = if (isOver) RedExpense else MutedText
                                         )
@@ -3999,9 +4006,10 @@ fun AddAssetDialog(
                 // Budget / Initial Cost Input (Optional)
                 OutlinedTextField(
                     value = price,
-                    onValueChange = { price = it },
-                    label = { Text("Target Budget or Initial Cost (₹) - Optional", color = MutedText) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { price = AmountVisualTransformation.sanitizeAmountInput(it) },
+                    label = { Text("Target Budget or Initial Cost (${NumberFormatConfig.currencySymbol}) - Optional", color = MutedText) },
+                    visualTransformation = AmountVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
@@ -4183,7 +4191,7 @@ fun AssetDetailDialog(
                             Column {
                                 Text("Total Spent", style = MaterialTheme.typography.labelSmall, color = MutedText)
                                 Spacer(modifier = Modifier.height(2.dp))
-                                Text("₹${String.format(Locale.getDefault(), "%,.0f", totalSpent)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = AccentGold)
+                                Text("${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", totalSpent)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = AccentGold)
                             }
                             Box(modifier = Modifier.width(1.dp).height(30.dp).background(DarkSurfaceVariant))
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -4196,7 +4204,7 @@ fun AssetDetailDialog(
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text("Target / Limit", style = MaterialTheme.typography.labelSmall, color = MutedText)
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text("₹${String.format(Locale.getDefault(), "%,.0f", targetBudgetOrPrice)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = PrimaryLightEmerald)
+                                    Text("${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", targetBudgetOrPrice)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = PrimaryLightEmerald)
                                 }
                             }
                         }
@@ -4226,7 +4234,7 @@ fun AssetDetailDialog(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Text(catName, style = MaterialTheme.typography.bodySmall, color = SmoothWhite, fontWeight = FontWeight.Medium)
-                                            Text("₹${String.format(Locale.getDefault(), "%,.0f", amount)} ($pct%)", style = MaterialTheme.typography.labelSmall, color = AccentGold, fontWeight = FontWeight.Bold)
+                                            Text("${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", amount)} ($pct%)", style = MaterialTheme.typography.labelSmall, color = AccentGold, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -4333,7 +4341,7 @@ fun AssetDetailDialog(
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
-                                                    text = "₹${String.format(Locale.getDefault(), "%,.0f", tx.amount)}",
+                                                    text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", tx.amount)}",
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     fontWeight = FontWeight.ExtraBold,
                                                     color = RedExpense
@@ -4472,7 +4480,7 @@ fun BudgetItemCard(
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "₹${spent.toInt()} spent of ₹${budget.limitAmount.toInt()} limit",
+                        text = "${NumberFormatConfig.currencySymbol}${spent.toInt()} spent of ${NumberFormatConfig.currencySymbol}${budget.limitAmount.toInt()} limit",
                         style = MaterialTheme.typography.bodySmall,
                         color = MutedText
                     )
@@ -4523,7 +4531,7 @@ fun BudgetItemCard(
                     fontWeight = if (percent >= 1.0) FontWeight.Bold else FontWeight.Normal
                 )
                 Text(
-                    text = if (remaining < 0) "₹${Math.abs(remaining.toInt())} over budget" else "₹${remaining.toInt()} left",
+                    text = if (remaining < 0) "${NumberFormatConfig.currencySymbol}${Math.abs(remaining.toInt())} over budget" else "${NumberFormatConfig.currencySymbol}${remaining.toInt()} left",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (remaining < 0) RedExpense else GreenIncome,
                     fontWeight = FontWeight.Bold
@@ -4536,7 +4544,7 @@ fun BudgetItemCard(
 @Composable
 fun BudgetsScreen(viewModel: FinanceViewModel) {
     val budgets by viewModel.budgets.collectAsStateWithLifecycle()
-    val transactions by viewModel.transactions.collectAsStateWithLifecycle()
+    val budgetSpendings by viewModel.budgetCategorySpendings.collectAsStateWithLifecycle()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingBudget by remember { mutableStateOf<Budget?>(null) }
@@ -4609,9 +4617,7 @@ fun BudgetsScreen(viewModel: FinanceViewModel) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(budgets) { budget ->
-                    val spent = transactions
-                        .filter { it.type == "EXPENSE" && it.category == budget.category }
-                        .sumOf { it.amount }
+                    val spent = budgetSpendings[budget.category] ?: 0.0
 
                     BudgetItemCard(
                         budget = budget,
@@ -4711,9 +4717,10 @@ fun AddBudgetDialog(
 
                 OutlinedTextField(
                     value = limit,
-                    onValueChange = { limit = it },
-                    label = { Text("Monthly Limit Amount (₹)", color = MutedText) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { limit = AmountVisualTransformation.sanitizeAmountInput(it) },
+                    label = { Text("Monthly Limit Amount (${NumberFormatConfig.currencySymbol})", color = MutedText) },
+                    visualTransformation = AmountVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -4908,7 +4915,7 @@ fun SubscriptionCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = "₹${String.format(Locale.getDefault(), "%,.0f", sub.cost)}",
+                        text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", sub.cost)}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -5328,7 +5335,7 @@ fun SubscriptionsScreen(viewModel: FinanceViewModel) {
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "₹${String.format(Locale.getDefault(), "%,.0f", totalMonthlyCost)} / mo",
+                                text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", totalMonthlyCost)} / mo",
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = SmoothWhite
@@ -5399,7 +5406,7 @@ fun SubscriptionsScreen(viewModel: FinanceViewModel) {
                                 ) {
                                     Icon(Icons.Default.Alarm, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
                                     Text(
-                                        text = "Due Next 7 Days: ₹${String.format(Locale.getDefault(), "%,.0f", upcoming7DaysCost)}",
+                                        text = "Due Next 7 Days: ${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", upcoming7DaysCost)}",
                                         style = MaterialTheme.typography.labelMedium,
                                         color = SmoothWhite,
                                         fontWeight = FontWeight.Bold
@@ -5479,7 +5486,7 @@ fun SubscriptionsScreen(viewModel: FinanceViewModel) {
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
                                         Text(
-                                            text = "(₹${sub.cost.toInt()})",
+                                            text = "(${NumberFormatConfig.currencySymbol}${sub.cost.toInt()})",
                                             color = PrimaryLightEmerald,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold
@@ -5622,7 +5629,7 @@ fun SubscriptionsScreen(viewModel: FinanceViewModel) {
                     onDeleteClick = {
                         viewModel.requestDeleteConfirmation(
                             title = "Delete Subscription?",
-                            message = "Are you sure you want to permanently delete '${sub.name}' (₹${sub.cost.toInt()})?"
+                            message = "Are you sure you want to permanently delete '${sub.name}' (${NumberFormatConfig.currencySymbol}${sub.cost.toInt()})?"
                         ) {
                             viewModel.deleteSubscription(sub)
                         }
@@ -5757,7 +5764,7 @@ fun PayAndAdvanceDialog(
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Payment Amount:", color = MutedText, fontSize = 13.sp)
-                            Text("₹${String.format(Locale.getDefault(), "%,.2f", sub.cost)}", color = SmoothWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", sub.cost)}", color = SmoothWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Current Due Date:", color = MutedText, fontSize = 13.sp)
@@ -6000,9 +6007,10 @@ fun AddSubscriptionDialog(
                 ) {
                     OutlinedTextField(
                         value = cost,
-                        onValueChange = { cost = it },
-                        label = { Text("Cost (₹) *", color = MutedText) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        onValueChange = { cost = AmountVisualTransformation.sanitizeAmountInput(it) },
+                        label = { Text("Cost (${NumberFormatConfig.currencySymbol}) *", color = MutedText) },
+                        visualTransformation = AmountVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.weight(1f).testTag("sub_cost_input"),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -6457,8 +6465,8 @@ fun SavingsGoalsScreen(viewModel: FinanceViewModel) {
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Saved: ₹${goal.currentAmount.toInt()}", style = MaterialTheme.typography.bodyMedium, color = SmoothWhite, fontWeight = FontWeight.Bold)
-                                Text("Target: ₹${goal.targetAmount.toInt()}", style = MaterialTheme.typography.bodyMedium, color = MutedText)
+                                Text("Saved: ${NumberFormatConfig.currencySymbol}${goal.currentAmount.toInt()}", style = MaterialTheme.typography.bodyMedium, color = SmoothWhite, fontWeight = FontWeight.Bold)
+                                Text("Target: ${NumberFormatConfig.currencySymbol}${goal.targetAmount.toInt()}", style = MaterialTheme.typography.bodyMedium, color = MutedText)
                             }
 
                             Spacer(modifier = Modifier.height(6.dp))
@@ -6479,7 +6487,7 @@ fun SavingsGoalsScreen(viewModel: FinanceViewModel) {
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (remaining <= 0) "Goal Achieved! 🎉" else "₹${remaining.toInt()} remaining",
+                                    text = if (remaining <= 0) "Goal Achieved! 🎉" else "${NumberFormatConfig.currencySymbol}${remaining.toInt()} remaining",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = if (remaining <= 0) GreenIncome else AccentGold,
                                     fontWeight = FontWeight.Bold
@@ -6524,9 +6532,10 @@ fun SavingsGoalsScreen(viewModel: FinanceViewModel) {
                     Text("Add money to ${selectedGoalForDeposit!!.name}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = SmoothWhite)
                     OutlinedTextField(
                         value = depositAmount,
-                        onValueChange = { depositAmount = it },
-                        label = { Text("Deposit Amount (₹)", color = MutedText) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        onValueChange = { depositAmount = AmountVisualTransformation.sanitizeAmountInput(it) },
+                        label = { Text("Deposit Amount (${NumberFormatConfig.currencySymbol})", color = MutedText) },
+                        visualTransformation = AmountVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                     )
@@ -6595,9 +6604,10 @@ fun AddSavingsGoalDialog(
 
                 OutlinedTextField(
                     value = target,
-                    onValueChange = { target = it },
-                    label = { Text("Target Amount (₹)", color = MutedText) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { target = AmountVisualTransformation.sanitizeAmountInput(it) },
+                    label = { Text("Target Amount (${NumberFormatConfig.currencySymbol})", color = MutedText) },
+                    visualTransformation = AmountVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
@@ -6605,9 +6615,10 @@ fun AddSavingsGoalDialog(
 
                 OutlinedTextField(
                     value = current,
-                    onValueChange = { current = it },
+                    onValueChange = { current = AmountVisualTransformation.sanitizeAmountInput(it) },
                     label = { Text("Currently Saved Amount (Optional)", color = MutedText) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    visualTransformation = AmountVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
@@ -6846,7 +6857,7 @@ fun BorrowLendScreen(viewModel: FinanceViewModel) {
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text("₹${loan.amount}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = SmoothWhite)
+                                    Text("${NumberFormatConfig.currencySymbol}${loan.amount}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = SmoothWhite)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Checkbox(
                                             checked = loan.isPaid,
@@ -6864,7 +6875,7 @@ fun BorrowLendScreen(viewModel: FinanceViewModel) {
                                         onClick = {
                                             viewModel.requestDeleteConfirmation(
                                                 title = "Delete Record?",
-                                                message = "Are you sure you want to permanently delete the transaction of ₹${loan.amount} for ${loan.contactName}?"
+                                                message = "Are you sure you want to permanently delete the transaction of ${NumberFormatConfig.currencySymbol}${loan.amount} for ${loan.contactName}?"
                                             ) {
                                                 viewModel.deleteBorrowLend(loan)
                                             }
@@ -6953,9 +6964,10 @@ fun AddBorrowLendDialog(
 
                 OutlinedTextField(
                     value = amount,
-                    onValueChange = { amount = it },
-                    label = { Text("Amount (₹)", color = MutedText) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { amount = AmountVisualTransformation.sanitizeAmountInput(it) },
+                    label = { Text("Amount (${NumberFormatConfig.currencySymbol})", color = MutedText) },
+                    visualTransformation = AmountVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
@@ -7019,162 +7031,254 @@ fun WishlistCard(
     onDeleteClick: () -> Unit,
     onTogglePurchased: () -> Unit
 ) {
+    val priorityColor = when (item.priority) {
+        "HIGH" -> RedExpense
+        "MEDIUM" -> AccentGold
+        else -> BlueCard
+    }
+    val priorityEmoji = when (item.priority) {
+        "HIGH" -> "🔥"
+        "MEDIUM" -> "⭐️"
+        else -> "❄️"
+    }
+
+    val targetDateFormatted = remember(item.targetDate) {
+        if (item.targetDate > 0) {
+            SimpleDateFormat("MMM yyyy", Locale.getDefault()).format(Date(item.targetDate))
+        } else null
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 6.dp),
+            .padding(horizontal = 2.dp, vertical = 4.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (item.isPurchased) DarkSurfaceVariant.copy(alpha = 0.5f) else DarkSurface
+            containerColor = if (item.isPurchased) DarkSurfaceVariant.copy(alpha = 0.45f) else DarkSurface
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = if (item.isPurchased) DarkSurfaceVariant.copy(alpha = 0.15f)
-            else DarkSurfaceVariant.copy(alpha = 0.4f)
+            color = if (item.isPurchased) PrimaryEmerald.copy(alpha = 0.35f) else priorityColor.copy(alpha = 0.28f)
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // Row 1: Priority Icon Squircle + Title & Badges + Price (Compact adaptive)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Priority Badge
-                val priorityColor = when (item.priority) {
-                    "HIGH" -> RedExpense
-                    "MEDIUM" -> AccentGold
-                    else -> BlueCard
-                }
-                val priorityEmoji = when (item.priority) {
-                    "HIGH" -> "🔥"
-                    "MEDIUM" -> "⭐️"
-                    else -> "❄️"
-                }
-
+                // Priority Emoji in Squircle
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(40.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(priorityColor.copy(alpha = 0.12f)),
+                        .background(
+                            if (item.isPurchased) PrimaryEmerald.copy(alpha = 0.15f)
+                            else priorityColor.copy(alpha = 0.15f)
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = priorityEmoji, fontSize = 20.sp)
+                    Text(
+                        text = if (item.isPurchased) "✓" else priorityEmoji,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (item.isPurchased) PrimaryLightEmerald else SmoothWhite
+                    )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-                // Name & Priority column (elements stacked vertically to prevent squishing with long names)
-                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                // Item Title & Sub-pills
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 6.dp)
+                ) {
                     Text(
                         text = item.name,
                         style = MaterialTheme.typography.titleMedium,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (item.isPurchased) MutedText else SmoothWhite,
                         textDecoration = if (item.isPurchased) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (item.isPurchased) PrimaryEmerald.copy(alpha = 0.15f)
-                        else priorityColor.copy(alpha = 0.15f)
+
+                    Spacer(modifier = Modifier.height(3.dp))
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = if (item.isPurchased) "Bought" else "${item.priority} PRIORITY",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (item.isPurchased) PrimaryLightEmerald else priorityColor,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
+                        // Priority / Bought Pill
+                        Surface(
+                            shape = RoundedCornerShape(5.dp),
+                            color = if (item.isPurchased) PrimaryEmerald.copy(alpha = 0.18f)
+                            else priorityColor.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = if (item.isPurchased) "✓ BOUGHT" else "${item.priority} PRIORITY",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.5.sp,
+                                color = if (item.isPurchased) PrimaryLightEmerald else priorityColor,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+
+                        // Target Date Pill
+                        if (targetDateFormatted != null) {
+                            Surface(
+                                shape = RoundedCornerShape(5.dp),
+                                color = DarkSurfaceVariant.copy(alpha = 0.6f)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CalendarToday,
+                                        contentDescription = null,
+                                        tint = MutedText,
+                                        modifier = Modifier.size(9.dp)
+                                    )
+                                    Text(
+                                        text = targetDateFormatted,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MutedText,
+                                        fontSize = 9.5.sp
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
-
-                // Price
-                Text(
-                    text = "₹${item.price.toInt()}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = if (item.isPurchased) MutedText else SmoothWhite
-                )
-            }
-
-            // Notes below the top row, perfectly aligned/indented under the product name
-            if (item.notes.isNotBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Spacer(modifier = Modifier.width(56.dp)) // Aligns under the name (badge 44dp + spacer 12dp)
+                // Highlighted Price Box
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (item.isPurchased) DarkSurfaceVariant.copy(alpha = 0.4f) else PrimaryEmerald.copy(alpha = 0.12f)
+                ) {
                     Text(
-                        text = item.notes,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MutedText,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", item.price)}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (item.isPurchased) MutedText else PrimaryLightEmerald,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = DarkSurfaceVariant.copy(alpha = 0.5f))
-            Spacer(modifier = Modifier.height(8.dp))
+            // Notes Section
+            if (item.notes.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = DarkSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Notes,
+                            contentDescription = null,
+                            tint = MutedText,
+                            modifier = Modifier.size(13.dp).padding(top = 1.5.dp)
+                        )
+                        Text(
+                            text = item.notes,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.5.sp,
+                            color = MutedText,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
 
+            HorizontalDivider(color = DarkSurfaceVariant.copy(alpha = 0.5f), thickness = 0.8.dp)
+
+            // Action Footer (Adaptive Row with weight/shrink protection)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Button left side
+                // Primary Toggle Button (Adaptive text & padding)
                 Button(
                     onClick = onTogglePurchased,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (item.isPurchased) DarkSurfaceVariant else PrimaryEmerald
+                        containerColor = if (item.isPurchased) DarkSurfaceVariant else PrimaryEmerald,
+                        contentColor = SmoothWhite
                     ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                    modifier = Modifier.height(34.dp)
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .height(34.dp)
+                        .weight(1f, fill = false)
                 ) {
                     Icon(
-                        imageVector = if (item.isPurchased) Icons.Default.CheckCircle else Icons.Default.ShoppingCart,
+                        imageVector = if (item.isPurchased) Icons.Default.Refresh else Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = if (item.isPurchased) MutedText else SmoothWhite,
+                        tint = if (item.isPurchased) AccentGold else SmoothWhite,
                         modifier = Modifier.size(14.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = if (item.isPurchased) "Bought" else "Mark Bought",
-                        fontSize = 12.sp,
-                        color = if (item.isPurchased) MutedText else SmoothWhite,
-                        fontWeight = FontWeight.Bold
+                        text = if (item.isPurchased) "Move to Active" else "Mark as Bought",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // Edit and Delete right side
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Edit & Delete Action Buttons
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    IconButton(onClick = onEditClick) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit Item",
-                            tint = PrimaryEmerald,
-                            modifier = Modifier.size(20.dp)
-                        )
+                    Surface(
+                        shape = CircleShape,
+                        color = DarkSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        IconButton(onClick = onEditClick, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit Item",
+                                tint = PrimaryEmerald,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
                     }
-                    IconButton(onClick = onDeleteClick) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete Item",
-                            tint = RedExpense,
-                            modifier = Modifier.size(20.dp)
-                        )
+
+                    Surface(
+                        shape = CircleShape,
+                        color = DarkSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        IconButton(onClick = onDeleteClick, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Item",
+                                tint = RedExpense,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -7187,75 +7291,210 @@ fun WishlistScreen(viewModel: FinanceViewModel) {
     val list by viewModel.wishlist.collectAsStateWithLifecycle()
     var showAddDialog by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<Wishlist?>(null) }
+    var selectedFilter by remember { mutableStateOf("ALL") }
+
+    val activeList = remember(list) { list.filter { !it.isPurchased } }
+    val purchasedList = remember(list) { list.filter { it.isPurchased } }
+    val totalActiveCost = remember(activeList) { activeList.sumOf { it.price } }
+    val totalPurchasedCost = remember(purchasedList) { purchasedList.sumOf { it.price } }
+
+    val filteredList = remember(list, selectedFilter) {
+        when (selectedFilter) {
+            "ACTIVE" -> list.filter { !it.isPurchased }
+            "HIGH" -> list.filter { !it.isPurchased && it.priority == "HIGH" }
+            "MEDIUM" -> list.filter { !it.isPurchased && it.priority == "MEDIUM" }
+            "LOW" -> list.filter { !it.isPurchased && it.priority == "LOW" }
+            "PURCHASED" -> list.filter { it.isPurchased }
+            else -> list
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Responsive Header: Title + Count Badge & Add Item Button
+        // Top Header
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.weight(1f, fill = false)
-            ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(
                     text = "Wishlist",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = SmoothWhite
                 )
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = DarkSurfaceVariant
-                ) {
-                    Text(
-                        text = "${list.size} items",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = AccentGold,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                    )
-                }
+                Text(
+                    text = "Track dreams & planned purchases",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 11.5.sp,
+                    color = MutedText,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             Button(
                 onClick = { showAddDialog = true },
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 modifier = Modifier.testTag("add_wishlist_button")
             ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Add Item", fontSize = 13.sp, color = SmoothWhite, fontWeight = FontWeight.Bold)
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Item", fontSize = 12.5.sp, color = SmoothWhite, fontWeight = FontWeight.Bold)
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Summary Hero Card (Responsive & Overflow-safe)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = BorderStroke(1.dp, DarkSurfaceVariant.copy(alpha = 0.5f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        text = "Active Wishlist Value",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontSize = 11.sp,
+                        color = MutedText
+                    )
+                    Spacer(modifier = Modifier.height(1.dp))
+                    Text(
+                        text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", totalActiveCost)}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryLightEmerald,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${activeList.size} items waiting",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 10.5.sp,
+                        color = MutedText
+                    )
+                }
 
-        if (list.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = DarkSurfaceVariant.copy(alpha = 0.7f),
+                    border = BorderStroke(1.dp, PrimaryEmerald.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "✓ ${purchasedList.size} Fulfilled",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AccentGold
+                        )
+                        Text(
+                            text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", totalPurchasedCost)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SmoothWhite
+                        )
+                    }
+                }
+            }
+        }
+
+        // Category Filter Chips Row
+        val filterOptions = listOf(
+            "ALL" to "All (${list.size})",
+            "ACTIVE" to "Active (${activeList.size})",
+            "HIGH" to "🔥 High (${activeList.count { it.priority == "HIGH" }})",
+            "MEDIUM" to "⭐️ Med (${activeList.count { it.priority == "MEDIUM" }})",
+            "LOW" to "❄️ Low (${activeList.count { it.priority == "LOW" }})",
+            "PURCHASED" to "✓ Bought (${purchasedList.size})"
+        )
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(filterOptions) { (key, label) ->
+                val isSelected = selectedFilter == key
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSelected) PrimaryEmerald else DarkSurfaceVariant,
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSelected) PrimaryEmerald else DarkSurfaceVariant.copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.clickable { selectedFilter = key }
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontSize = 11.5.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) SmoothWhite else MutedText,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                    )
+                }
+            }
+        }
+
+        // Wishlist Items List / Empty State
+        if (filteredList.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Your wishlist is empty. Plan upcoming purchases!", color = MutedText)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ShoppingCart,
+                        contentDescription = null,
+                        tint = MutedText.copy(alpha = 0.5f),
+                        modifier = Modifier.size(42.dp)
+                    )
+                    Text(
+                        text = if (list.isEmpty()) "Your wishlist is empty." else "No items match this filter.",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SmoothWhite
+                    )
+                    Text(
+                        text = "Add goals and track what you plan to buy next!",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 12.sp,
+                        color = MutedText
+                    )
+                }
             }
         } else {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(list) { item ->
+                items(filteredList, key = { "wish_${it.id}" }) { item ->
                     WishlistCard(
                         item = item,
                         onEditClick = { editingItem = item },
@@ -7294,31 +7533,66 @@ fun AddWishlistDialog(
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf(itemToEdit?.name ?: "") }
-    var price by remember { mutableStateOf(itemToEdit?.price?.toString() ?: "") }
+    var price by remember { mutableStateOf(if (itemToEdit != null) itemToEdit.price.toString() else "") }
     var selectedPriority by remember { mutableStateOf(itemToEdit?.priority ?: "HIGH") }
+    var selectedTimelineMonths by remember { mutableStateOf(3) }
     var notes by remember { mutableStateOf(itemToEdit?.notes ?: "") }
 
-    Dialog(onDismissRequest = onDismiss) {
+    val configuration = LocalConfiguration.current
+    val screenHeight = configuration.screenHeightDp.dp
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Card(
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = DarkSurface),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 480.dp)
+                .heightIn(max = screenHeight * 0.88f)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text(
-                    text = if (itemToEdit != null) "Edit Wishlist Item" else "Add to Wishlist",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = SmoothWhite
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (itemToEdit != null) "Edit Wishlist Item" else "Add to Wishlist",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SmoothWhite
+                    )
+                    Text(
+                        text = when (selectedPriority) {
+                            "HIGH" -> "🔥 High"
+                            "MEDIUM" -> "⭐️ Medium"
+                            else -> "❄️ Low"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = when (selectedPriority) {
+                            "HIGH" -> RedExpense
+                            "MEDIUM" -> AccentGold
+                            else -> BlueCard
+                        }
+                    )
+                }
 
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Product Name", color = MutedText) },
+                    label = { Text("Product / Goal Name", color = MutedText, fontSize = 13.sp) },
+                    placeholder = { Text("e.g. Sony WH-1000XM5", color = MutedText.copy(alpha = 0.5f), fontSize = 13.sp) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
@@ -7326,34 +7600,89 @@ fun AddWishlistDialog(
 
                 OutlinedTextField(
                     value = price,
-                    onValueChange = { price = it },
-                    label = { Text("Price (₹)", color = MutedText) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { price = AmountVisualTransformation.sanitizeAmountInput(it) },
+                    label = { Text("Estimated Price (${NumberFormatConfig.currencySymbol})", color = MutedText, fontSize = 13.sp) },
+                    placeholder = { Text("0.00", color = MutedText.copy(alpha = 0.5f), fontSize = 13.sp) },
+                    visualTransformation = AmountVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                 )
 
-                Column {
-                    Text("Select Priority", style = MaterialTheme.typography.bodySmall, color = MutedText)
-                    Spacer(modifier = Modifier.height(4.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Priority Level", style = MaterialTheme.typography.bodySmall, fontSize = 11.5.sp, color = MutedText)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        val pList = listOf("HIGH", "MEDIUM", "LOW")
-                        pList.forEach { priority ->
+                        val priorities = listOf(
+                            Triple("HIGH", "🔥 High", RedExpense),
+                            Triple("MEDIUM", "⭐️ Med", AccentGold),
+                            Triple("LOW", "❄️ Low", BlueCard)
+                        )
+                        priorities.forEach { (priority, label, color) ->
                             val isSelected = selectedPriority == priority
-                            Box(
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) color.copy(alpha = 0.2f) else DarkSurfaceVariant,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) color else DarkSurfaceVariant.copy(alpha = 0.4f)
+                                ),
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSelected) PrimaryEmerald else DarkSurfaceVariant)
                                     .clickable { selectedPriority = priority }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
                             ) {
-                                Text(priority, color = SmoothWhite, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                Box(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) color else SmoothWhite,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Target Timeline", style = MaterialTheme.typography.bodySmall, fontSize = 11.5.sp, color = MutedText)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        val timelineOptions = listOf(
+                            1 to "1 Mo",
+                            3 to "3 Mo",
+                            6 to "6 Mo",
+                            12 to "1 Yr"
+                        )
+                        timelineOptions.forEach { (months, label) ->
+                            val isSelected = selectedTimelineMonths == months
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) PrimaryEmerald else DarkSurfaceVariant,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedTimelineMonths = months }
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 7.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) SmoothWhite else MutedText
+                                    )
+                                }
                             }
                         }
                     }
@@ -7362,14 +7691,16 @@ fun AddWishlistDialog(
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notes", color = MutedText) },
+                    label = { Text("Notes / Specifications (Optional)", color = MutedText, fontSize = 13.sp) },
+                    placeholder = { Text("e.g. Wait for festive sale", color = MutedText.copy(alpha = 0.5f), fontSize = 13.sp) },
                     modifier = Modifier.fillMaxWidth(),
+                    maxLines = 2,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                 )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                         Text("Cancel", color = MutedText)
@@ -7378,20 +7709,22 @@ fun AddWishlistDialog(
                         onClick = {
                             val prVal = price.toDoubleOrNull() ?: 0.0
                             if (name.isNotBlank() && prVal > 0) {
+                                val targetTime = System.currentTimeMillis() + (selectedTimelineMonths * 30L * 24 * 3600 * 1000)
                                 val item = if (itemToEdit != null) {
                                     itemToEdit.copy(
-                                        name = name,
+                                        name = name.trim(),
                                         price = prVal,
                                         priority = selectedPriority,
-                                        notes = notes
+                                        targetDate = targetTime,
+                                        notes = notes.trim()
                                     )
                                 } else {
                                     Wishlist(
-                                        name = name,
+                                        name = name.trim(),
                                         price = prVal,
                                         priority = selectedPriority,
-                                        targetDate = System.currentTimeMillis() + 90L * 24 * 3600 * 1000,
-                                        notes = notes
+                                        targetDate = targetTime,
+                                        notes = notes.trim()
                                     )
                                 }
                                 viewModel.addWishlistItem(item)
@@ -7399,16 +7732,16 @@ fun AddWishlistDialog(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryEmerald),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("Save")
+                        Text(if (itemToEdit != null) "Update" else "Save Item", fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
     }
 }
-
 // HIGH-FIDELITY ANALYTICS & NATIVE PIE CHART SCREEN
 @Composable
 fun AnalyticsScreen(viewModel: FinanceViewModel) {
@@ -7494,7 +7827,7 @@ fun AnalyticsScreen(viewModel: FinanceViewModel) {
                             // Center absolute sum text
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Total Spent", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("₹${"%,.0f".format(totalSpending)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                Text("${NumberFormatConfig.currencySymbol}${"%,.0f".format(totalSpending)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                             }
                         }
                     }
@@ -7536,7 +7869,7 @@ fun AnalyticsScreen(viewModel: FinanceViewModel) {
                                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("₹${"%,.0f".format(entry.value)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Text("${NumberFormatConfig.currencySymbol}${"%,.0f".format(entry.value)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                                     Surface(
                                         shape = RoundedCornerShape(6.dp),
                                         color = MaterialTheme.colorScheme.secondaryContainer
@@ -7579,7 +7912,7 @@ fun AnalyticsScreen(viewModel: FinanceViewModel) {
                             Text("Average Daily Spend", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
                             Text("Estimated expense pace per day", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, maxLines = 1)
                         }
-                        Text("₹${"%,.2f".format(dailyAvg)}/day", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                        Text("${NumberFormatConfig.currencySymbol}${"%,.2f".format(dailyAvg)}/day", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                     }
 
                     highestExpense?.let { h ->
@@ -7629,7 +7962,7 @@ fun AnalyticsScreen(viewModel: FinanceViewModel) {
                                 color = RedExpense.copy(alpha = 0.12f)
                             ) {
                                 Text(
-                                    text = "₹${"%,.2f".format(h.amount)}",
+                                    text = "${NumberFormatConfig.currencySymbol}${"%,.2f".format(h.amount)}",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = RedExpense,
@@ -8390,7 +8723,7 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
 
     val cardTransactions = remember(allTransactions, selectedCard) {
         if (selectedCard != null) {
-            allTransactions.filter { it.creditCardId == selectedCard.id }
+            allTransactions.filter { it.creditCardId == selectedCard.id || it.toCreditCardId == selectedCard.id }
         } else {
             emptyList()
         }
@@ -8526,8 +8859,9 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
                     ) {
                         creditCards.forEachIndexed { idx, card ->
                             val isSelected = selectedCard?.id == card.id
-                            val outstanding = allTransactions.filter { it.creditCardId == card.id && it.type == "EXPENSE" }.sumOf { it.amount } - 
-                                            allTransactions.filter { it.creditCardId == card.id && it.type == "INCOME" }.sumOf { it.amount }
+                            val outstanding = viewModel.calculateCreditCardOutstanding(card.id, allTransactions)
+                            val availableLimit = viewModel.calculateCreditCardAvailableLimit(card, allTransactions)
+                            val limitUsedPercent = viewModel.calculateCreditCardUtilization(card, allTransactions)
                             
                             val grad = remember(idx) {
                                 val gradients = listOf(
@@ -8588,23 +8922,41 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
 
                                     Spacer(modifier = Modifier.height(2.dp))
 
-                                    // Balance info
-                                    Column {
-                                        Text(
-                                            text = "Outstanding Balance",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Color.White.copy(alpha = 0.7f)
-                                        )
-                                        Text(
-                                            text = "₹${String.format(Locale.getDefault(), "%,.2f", outstanding)}",
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
+                                    // Balance & Available Limit info
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Bottom
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = "Outstanding Balance",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White.copy(alpha = 0.7f)
+                                            )
+                                            Text(
+                                                text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", outstanding)}",
+                                                style = MaterialTheme.typography.headlineSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(
+                                                text = "Available Limit",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White.copy(alpha = 0.7f)
+                                            )
+                                            Text(
+                                                text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", availableLimit)}",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF81C784)
+                                            )
+                                        }
                                     }
 
                                     // Limit progress bar
-                                    val limitUsedPercent = if (card.cardLimit > 0) (outstanding / card.cardLimit).coerceIn(0.0, 1.0) else 0.0
                                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         LinearProgressIndicator(
                                             progress = { limitUsedPercent.toFloat() },
@@ -8626,7 +8978,7 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
                                                 color = Color.White.copy(alpha = 0.7f)
                                             )
                                             Text(
-                                                text = "₹${String.format(Locale.getDefault(), "%,.0f", card.cardLimit)} Limit",
+                                                text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", card.cardLimit)} Limit",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = Color.White.copy(alpha = 0.7f)
                                             )
@@ -8641,18 +8993,42 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
                 // Selected Card Details & Management Tab
                 selectedCard?.let { card ->
                     val cycle = remember(card) { getCardCycleDates(card.billingDay, card.dueDay) }
+                    val cardOutstanding = viewModel.calculateCreditCardOutstanding(card.id, allTransactions)
+                    val cardAvailLimit = viewModel.calculateCreditCardAvailableLimit(card, allTransactions)
+
                     val cycleTransactions = remember(cardTransactions, cycle) {
-                        cardTransactions.filter { it.type == "EXPENSE" && it.date in cycle.startMillis..cycle.endMillis }
+                        cardTransactions.filter { it.date in cycle.startMillis..cycle.endMillis }
                     }
-                    val cycleBill = remember(cycleTransactions) { cycleTransactions.sumOf { it.amount } }
+                    val cycleExpenses = remember(cycleTransactions, card) {
+                        cycleTransactions.filter { it.type == "EXPENSE" && it.creditCardId == card.id }.sumOf { it.amount }
+                    }
+                    val cycleCredits = remember(cycleTransactions, card) {
+                        cycleTransactions.filter {
+                            ((it.type == "REFUND" || it.type == "INCOME") && it.creditCardId == card.id) ||
+                            (it.type == "TRANSFER" && it.toCreditCardId == card.id)
+                        }.sumOf { it.amount }
+                    }
+                    val cycleBill = maxOf(0.0, cycleExpenses - cycleCredits)
 
                     val nextCycleTransactions = remember(cardTransactions, cycle) {
-                        cardTransactions.filter { it.type == "EXPENSE" && it.date > cycle.endMillis }
+                        cardTransactions.filter { it.date > cycle.endMillis }
                     }
-                    val unbilledSum = remember(nextCycleTransactions) { nextCycleTransactions.sumOf { it.amount } }
+                    val nextCycleExpenses = remember(nextCycleTransactions, card) {
+                        nextCycleTransactions.filter { it.type == "EXPENSE" && it.creditCardId == card.id }.sumOf { it.amount }
+                    }
+                    val nextCycleCredits = remember(nextCycleTransactions, card) {
+                        nextCycleTransactions.filter {
+                            ((it.type == "REFUND" || it.type == "INCOME") && it.creditCardId == card.id) ||
+                            (it.type == "TRANSFER" && it.toCreditCardId == card.id)
+                        }.sumOf { it.amount }
+                    }
+                    val unbilledSum = maxOf(0.0, nextCycleExpenses - nextCycleCredits)
 
-                    val paymentTransactions = remember(cardTransactions) {
-                        cardTransactions.filter { it.type == "INCOME" }
+                    val paymentAndRefundTransactions = remember(cardTransactions, card) {
+                        cardTransactions.filter {
+                            ((it.type == "INCOME" || it.type == "REFUND") && it.creditCardId == card.id) ||
+                            (it.type == "TRANSFER" && it.toCreditCardId == card.id)
+                        }
                     }
 
                     // Card Info Header Cards
@@ -8775,12 +9151,21 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
                                         Text("Current Cycle Bill", style = MaterialTheme.typography.bodyMedium, color = SmoothWhite, fontWeight = FontWeight.Bold)
                                         Text("Due on ${SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date(cycle.dueMillis))}", style = MaterialTheme.typography.labelSmall, color = MutedText)
                                     }
-                                    Text(
-                                        text = "₹${String.format(Locale.getDefault(), "%,.2f", cycleBill)}",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (cycleBill > 0) RedExpense else SmoothWhite
-                                    )
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", cycleBill)}",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (cycleBill > 0) RedExpense else SmoothWhite
+                                        )
+                                        if (cycleCredits > 0) {
+                                            Text(
+                                                text = "-${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", cycleCredits)} credits/refunds",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = GreenIncome
+                                            )
+                                        }
+                                    }
                                 }
 
                                 HorizontalDivider(color = DarkSurfaceVariant.copy(alpha = 0.5f))
@@ -8795,10 +9180,29 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
                                         Text("These fall after the current billing date", style = MaterialTheme.typography.labelSmall, color = MutedText)
                                     }
                                     Text(
-                                        text = "₹${String.format(Locale.getDefault(), "%,.2f", unbilledSum)}",
+                                        text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", unbilledSum)}",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = MutedText
+                                    )
+                                }
+
+                                HorizontalDivider(color = DarkSurfaceVariant.copy(alpha = 0.5f))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Available Card Limit", style = MaterialTheme.typography.bodyMedium, color = SmoothWhite)
+                                        Text("Total Limit: ${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", card.cardLimit)}", style = MaterialTheme.typography.labelSmall, color = MutedText)
+                                    }
+                                    Text(
+                                        text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", cardAvailLimit)}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF81C784)
                                     )
                                 }
                             }
@@ -8806,7 +9210,7 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
 
                         // Transaction Lists for Selected Card grouped by Cycle
                         var selectedTabIdx by remember { mutableIntStateOf(0) }
-                        val tabs = listOf("Current Bill", "Unbilled/Next", "Payments History")
+                        val tabs = listOf("Current Bill", "Unbilled/Next", "Payments & Refunds")
 
                         TabRow(
                             selectedTabIndex = selectedTabIdx,
@@ -8839,7 +9243,7 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
                         val listToShow = when (selectedTabIdx) {
                             0 -> cycleTransactions
                             1 -> nextCycleTransactions
-                            else -> paymentTransactions
+                            else -> paymentAndRefundTransactions
                         }
 
                         if (listToShow.isEmpty()) {
@@ -8895,9 +9299,11 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
                                                 ) {
                                                     Text(icon, fontSize = 18.sp)
                                                 }
+                                                val isCredit = tx.type == "INCOME" || tx.type == "REFUND" || (tx.type == "TRANSFER" && tx.toCreditCardId == card.id)
+                                                val typePrefix = if (tx.type == "REFUND") "Refund • " else if (tx.type == "TRANSFER") "Payment • " else ""
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(
-                                                        text = if (tx.merchant.isNotBlank()) tx.merchant else tx.category,
+                                                        text = typePrefix + if (tx.merchant.isNotBlank()) tx.merchant else tx.category,
                                                         style = MaterialTheme.typography.bodyMedium,
                                                         fontWeight = FontWeight.Bold,
                                                         color = SmoothWhite,
@@ -8911,11 +9317,12 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
                                                     )
                                                 }
                                             }
+                                            val isCredit = tx.type == "INCOME" || tx.type == "REFUND" || (tx.type == "TRANSFER" && tx.toCreditCardId == card.id)
                                             Text(
-                                                text = "${if (tx.type == "INCOME") "+" else "-"} ₹${String.format(Locale.getDefault(), "%,.1f", tx.amount)}",
+                                                text = "${if (isCredit) "+" else "-"} ${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", tx.amount)}",
                                                 style = MaterialTheme.typography.bodyMedium,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (tx.type == "INCOME") GreenIncome else RedExpense
+                                                color = if (isCredit) GreenIncome else RedExpense
                                             )
                                         }
                                     }
@@ -8987,9 +9394,10 @@ fun CreditCardsScreen(viewModel: FinanceViewModel) {
 
                     OutlinedTextField(
                         value = paymentAmount,
-                        onValueChange = { paymentAmount = it },
-                        label = { Text("Payment Amount (₹)", color = MutedText) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        onValueChange = { paymentAmount = AmountVisualTransformation.sanitizeAmountInput(it) },
+                        label = { Text("Payment Amount (${NumberFormatConfig.currencySymbol})", color = MutedText) },
+                        visualTransformation = AmountVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
                     )
@@ -9089,9 +9497,10 @@ fun AddCreditCardDialog(
 
                 OutlinedTextField(
                     value = limitStr,
-                    onValueChange = { limitStr = it },
-                    label = { Text("Card Limit (₹)", color = MutedText) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { limitStr = AmountVisualTransformation.sanitizeAmountInput(it) },
+                    label = { Text("Card Limit (${NumberFormatConfig.currencySymbol})", color = MutedText) },
+                    visualTransformation = AmountVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
@@ -9199,8 +9608,8 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
     val totalCalculatedBalance = remember(bankAccounts, allTransactions) {
         bankAccounts.sumOf { bank ->
             val bankTxs = allTransactions.filter { it.bankAccountId == bank.id }
-            val incomes = bankTxs.filter { it.type == "INCOME" }.sumOf { it.amount }
-            val expenses = bankTxs.filter { it.type == "EXPENSE" }.sumOf { it.amount }
+            val incomes = bankTxs.filter { it.type == "INCOME" || it.type == "REFUND" }.sumOf { it.amount }
+            val expenses = bankTxs.filter { it.type == "EXPENSE" || it.type == "TRANSFER" }.sumOf { it.amount }
             bank.initialBalance + incomes - expenses
         }
     }
@@ -9211,12 +9620,12 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
 
     val totalInflow = remember(bankAccounts, allTransactions) {
         val bankIds = bankAccounts.map { it.id }.toSet()
-        allTransactions.filter { it.bankAccountId in bankIds && it.type == "INCOME" }.sumOf { it.amount }
+        allTransactions.filter { it.bankAccountId in bankIds && (it.type == "INCOME" || it.type == "REFUND") }.sumOf { it.amount }
     }
 
     val totalOutflow = remember(bankAccounts, allTransactions) {
         val bankIds = bankAccounts.map { it.id }.toSet()
-        allTransactions.filter { it.bankAccountId in bankIds && it.type == "EXPENSE" }.sumOf { it.amount }
+        allTransactions.filter { it.bankAccountId in bankIds && (it.type == "EXPENSE" || it.type == "TRANSFER") }.sumOf { it.amount }
     }
 
     Column(
@@ -9348,7 +9757,7 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
 
                         // Prominent Net Balance Display (Full-width, never wraps or truncates awkwardly)
                         Text(
-                            text = "₹${String.format(Locale.getDefault(), "%,.2f", totalCalculatedBalance)}",
+                            text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", totalCalculatedBalance)}",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (totalCalculatedBalance >= 0) GreenIncome else RedExpense,
@@ -9366,7 +9775,7 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
                             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                 Text("Total Inflow (Credits)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    text = "+₹${String.format(Locale.getDefault(), "%,.2f", totalInflow)}",
+                                    text = "+${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", totalInflow)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = GreenIncome,
@@ -9377,7 +9786,7 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
                             Column(horizontalAlignment = Alignment.End) {
                                 Text("Total Outflow (Debits)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    text = "-₹${String.format(Locale.getDefault(), "%,.2f", totalOutflow)}",
+                                    text = "-${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", totalOutflow)}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = RedExpense,
@@ -9451,10 +9860,10 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
                         allTransactions.filter { it.bankAccountId == bank.id }
                     }
                     val bankIncomes = remember(bankTxs) {
-                        bankTxs.filter { it.type == "INCOME" }.sumOf { it.amount }
+                        bankTxs.filter { it.type == "INCOME" || it.type == "REFUND" }.sumOf { it.amount }
                     }
                     val bankExpenses = remember(bankTxs) {
-                        bankTxs.filter { it.type == "EXPENSE" }.sumOf { it.amount }
+                        bankTxs.filter { it.type == "EXPENSE" || it.type == "TRANSFER" }.sumOf { it.amount }
                     }
                     val currentBal = remember(bank.initialBalance, bankIncomes, bankExpenses) {
                         bank.initialBalance + bankIncomes - bankExpenses
@@ -9576,7 +9985,7 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
                                         Column {
                                             Text("Calculated Balance", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             Text(
-                                                text = "₹${String.format(Locale.getDefault(), "%,.2f", currentBal)}",
+                                                text = "${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", currentBal)}",
                                                 style = MaterialTheme.typography.titleLarge,
                                                 fontWeight = FontWeight.ExtraBold,
                                                 color = if (currentBal >= 0) GreenIncome else RedExpense
@@ -9584,7 +9993,7 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
                                         }
                                         Column(horizontalAlignment = Alignment.End) {
                                             Text("Opening Balance", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text("₹${String.format(Locale.getDefault(), "%,.2f", bank.initialBalance)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                                            Text("${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.2f", bank.initialBalance)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
                                         }
                                     }
 
@@ -9594,8 +10003,8 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Text("Credits: +₹${String.format(Locale.getDefault(), "%,.0f", bankIncomes)}", style = MaterialTheme.typography.labelSmall, color = GreenIncome, fontWeight = FontWeight.Bold)
-                                        Text("Debits: -₹${String.format(Locale.getDefault(), "%,.0f", bankExpenses)}", style = MaterialTheme.typography.labelSmall, color = RedExpense, fontWeight = FontWeight.Bold)
+                                        Text("Credits: +${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", bankIncomes)}", style = MaterialTheme.typography.labelSmall, color = GreenIncome, fontWeight = FontWeight.Bold)
+                                        Text("Debits: -${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.0f", bankExpenses)}", style = MaterialTheme.typography.labelSmall, color = RedExpense, fontWeight = FontWeight.Bold)
                                         Text("${bankTxs.size} txns", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                 }
@@ -9790,11 +10199,12 @@ fun BankAccountsScreen(viewModel: FinanceViewModel) {
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
+                                                val isTxCredit = tx.type == "INCOME" || tx.type == "REFUND"
                                                 Text(
-                                                    text = "${if (tx.type == "INCOME") "+" else "-"}₹${String.format(Locale.getDefault(), "%,.1f", tx.amount)}",
+                                                    text = "${if (isTxCredit) "+" else "-"}${NumberFormatConfig.currencySymbol}${String.format(Locale.getDefault(), "%,.1f", tx.amount)}",
                                                     style = MaterialTheme.typography.bodyMedium,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = if (tx.type == "INCOME") GreenIncome else RedExpense
+                                                    color = if (isTxCredit) GreenIncome else RedExpense
                                                 )
                                             }
                                         }
@@ -9960,9 +10370,10 @@ fun AddBankAccountDialog(
 
                 OutlinedTextField(
                     value = initialBalanceStr,
-                    onValueChange = { initialBalanceStr = it },
-                    label = { Text("Opening / Starting Balance (₹)", color = MutedText) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    onValueChange = { initialBalanceStr = AmountVisualTransformation.sanitizeAmountInput(it) },
+                    label = { Text("Opening / Starting Balance (${NumberFormatConfig.currencySymbol})", color = MutedText) },
+                    visualTransformation = AmountVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryEmerald)
@@ -10292,7 +10703,7 @@ fun PendingSmsCard(
                 }
 
                 Text(
-                    text = "${if (pending.type == "INCOME") "+" else "-"}₹${"%,.2f".format(pending.amount)}",
+                    text = "${if (pending.type == "INCOME") "+" else "-"}${NumberFormatConfig.currencySymbol}${"%,.2f".format(pending.amount)}",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.ExtraBold,
                     color = if (pending.type == "INCOME") GreenIncome else RedExpense
@@ -10605,7 +11016,11 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val isSmsDetectionEnabled by viewModel.isSmsDetectionEnabled.collectAsStateWithLifecycle()
+    val numberFormatPreference by viewModel.numberFormatPreference.collectAsStateWithLifecycle()
+    val currencySymbol by viewModel.currencySymbol.collectAsStateWithLifecycle()
+    val currencyCode by viewModel.currencyCode.collectAsStateWithLifecycle()
     val transactions = viewModel.transactions.collectAsStateWithLifecycle()
+    var showCurrencyDialog by remember { mutableStateOf(false) }
     var showSimulateDialog by remember { mutableStateOf(false) }
     var showDeleteMonthDialog by remember { mutableStateOf(false) }
     var showClearSmsQueueDialog by remember { mutableStateOf(false) }
@@ -10753,6 +11168,197 @@ fun SettingsScreen(
                                 maxLines = 1,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                             )
+                        }
+                    }
+                }
+            }
+        }
+
+        // REGIONAL NUMBER FORMATTING & CURRENCY PREFERENCES
+        item {
+            ElevatedCard(
+                shape = RoundedCornerShape(24.dp),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Currency Header & Active Currency Box
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Payments,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Currency & Region",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Active: $currencyCode ($currencySymbol)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MutedText
+                            )
+                        }
+                        FilledTonalButton(
+                            onClick = { showCurrencyDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text("Change ($currencySymbol)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Quick Currency Selection Chips
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            Triple("₹", "INR", "🇮🇳 ₹"),
+                            Triple("$", "USD", "🇺🇸 $"),
+                            Triple("€", "EUR", "🇪🇺 €"),
+                            Triple("£", "GBP", "🇬🇧 £"),
+                            Triple("AED", "AED", "🇦🇪 AED")
+                        ).forEach { (sym, code, label) ->
+                            val isSelected = (currencyCode == code) || (currencyCode.isEmpty() && currencySymbol == sym)
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        val defaultFormat = if (code == "INR") "INDIAN" else "INTERNATIONAL"
+                                        viewModel.setCurrency(sym, code, defaultFormat)
+                                    },
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // Number Format Section
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Public,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Number Format System",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = when (numberFormatPreference) {
+                                    "INDIAN" -> "Indian Lakhs / Crores (${currencySymbol}1,50,000)"
+                                    "INTERNATIONAL" -> "International Millions (${currencySymbol}150,000)"
+                                    else -> "Auto (Device Country: ${if (AmountVisualTransformation.isDefaultIndianLocale()) "Indian" else "International"})"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MutedText
+                            )
+                        }
+                    }
+
+                    // Format Option Selectors
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            Triple("AUTO", "🌐 Auto (Device Country)", if (AmountVisualTransformation.isDefaultIndianLocale()) "Uses Indian Lakhs (${currencySymbol}1,00,000)" else "Uses International (${currencySymbol}100,000)"),
+                            Triple("INDIAN", "🇮🇳 Indian Numbering", "Lakhs & Crores (e.g. ${currencySymbol}5,00,000)"),
+                            Triple("INTERNATIONAL", "🌎 International Standard", "Thousands & Millions (e.g. ${currencySymbol}500,000)")
+                        ).forEach { (key, title, subtitle) ->
+                            val isSelected = numberFormatPreference == key
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable { viewModel.setNumberFormatPreference(key) },
+                                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                        else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(16.dp),
+                                border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = subtitle,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontSize = 11.sp,
+                                            color = MutedText
+                                        )
+                                    }
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { viewModel.setNumberFormatPreference(key) },
+                                        colors = RadioButtonDefaults.colors(
+                                            selectedColor = MaterialTheme.colorScheme.primary,
+                                            unselectedColor = MutedText
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -11844,7 +12450,7 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "This will permanently wipe ALL recorded expenses and incomes across all time from both local device and cloud sync, and reset credit card balances to ₹0.00.\n\nYour accounts, cards, and categories will remain saved.",
+                        text = "This will permanently wipe ALL recorded expenses and incomes across all time from both local device and cloud sync, and reset credit card balances to ${NumberFormatConfig.currencySymbol}0.00.\n\nYour accounts, cards, and categories will remain saved.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -12040,6 +12646,18 @@ fun SettingsScreen(
             appLockManager = appLockManager,
             currentTimeout = autoLockTimeout,
             onDismiss = { showTimeoutDialog = false }
+        )
+    }
+
+        if (showCurrencyDialog) {
+        CurrencyPickerDialog(
+            currentCode = currencyCode,
+            currentSymbol = currencySymbol,
+            onSelect = { symbol, code, defaultFormat ->
+                viewModel.setCurrency(symbol, code, defaultFormat)
+                showCurrencyDialog = false
+            },
+            onDismiss = { showCurrencyDialog = false }
         )
     }
 
@@ -12546,6 +13164,12 @@ fun RestoreBackupConfirmDialog(
                             Text("Assets & Savings Goals:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("${stats.totalAssets} assets, ${stats.totalSavingsGoals} goals", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
                         }
+                        if (stats.hasUserPreferences) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Custom Preferences:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Included (UI & Settings)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
                     }
                 }
 
@@ -12940,7 +13564,7 @@ fun AppInfoDialog(
                     AppFeatureRow(Icons.Default.FolderSpecial, "Item & Project Trackers", "Unified cost hub for vehicle maintenance, health, trips & gadgets")
                     AppFeatureRow(Icons.Default.CloudSync, "Subscription Tracker", "Recurring fees, cycle advancing, and proactive renewal notifications")
                     AppFeatureRow(Icons.Default.CreditCard, "Credit Cards Tracker", "Statement cycles, payment due alerts, and utilization gauges")
-                    AppFeatureRow(Icons.Default.Savings, "Savings & Goals", "Target timelines with interactive +₹500/+₹1,000 progress buttons")
+                    AppFeatureRow(Icons.Default.Savings, "Savings & Goals", "Target timelines with interactive quick deposit progress buttons")
                     AppFeatureRow(Icons.Default.Handshake, "Borrow & Lend Book", "P2P debt ledgers, repayment statuses, and net balance tracking")
                     AppFeatureRow(Icons.Default.CardGiftcard, "Wishlist", "Priority purchase planning with 1-click expense conversion")
                     AppFeatureRow(Icons.Default.QueryStats, "Analytics & Charts", "Category breakdowns, cashflow trajectories, and payment shares")
@@ -13057,3 +13681,122 @@ fun AppFeatureRow(
     }
 }
 
+
+
+@Composable
+fun CurrencyPickerDialog(
+    currentCode: String,
+    currentSymbol: String,
+    onSelect: (symbol: String, code: String, defaultFormat: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val currencies = remember { NumberFormatConfig.SUPPORTED_CURRENCIES }
+    val filtered = remember(searchQuery) {
+        if (searchQuery.isBlank()) currencies
+        else currencies.filter {
+            it.name.contains(searchQuery, ignoreCase = true) ||
+            it.code.contains(searchQuery, ignoreCase = true) ||
+            it.symbol.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Select Currency",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search currency or country...", fontSize = 13.sp, color = MutedText) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MutedText) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 360.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items(filtered.size) { idx ->
+                    val curr = filtered[idx]
+                    val isSelected = (curr.code == currentCode) || (currentCode.isEmpty() && curr.symbol == currentSymbol)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                onSelect(curr.symbol, curr.code, curr.defaultNumberFormat)
+                            },
+                        color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(14.dp),
+                        border = if (isSelected) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = curr.symbol,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = curr.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Code: ${curr.code} • Default: ${if (curr.defaultNumberFormat == "INDIAN") "Lakhs/Crores" else "Standard Intl"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.sp,
+                                    color = MutedText
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+        shape = RoundedCornerShape(24.dp)
+    )
+}

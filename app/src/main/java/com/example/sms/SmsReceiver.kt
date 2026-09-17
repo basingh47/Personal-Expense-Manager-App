@@ -36,14 +36,16 @@ class SmsReceiver : BroadcastReceiver() {
         }
         val fullBody = bodyBuilder.toString()
 
-        val parsed = SmsParser.parseSms(sender, fullBody) ?: return
-
         // Process in background coroutine
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val db = AppDatabase.getDatabase(context)
                 val dao = db.financeDao()
+
+                // Fetch active custom categories to intelligently match incoming SMS
+                val customCategories = dao.getAllCustomCategoriesList()
+                val parsed = SmsParser.parseSms(sender, fullBody, customCategories) ?: return@launch
 
                 // Check registered Bank Accounts and Credit Cards
                 val bankAccounts = dao.getAllBankAccountsList()

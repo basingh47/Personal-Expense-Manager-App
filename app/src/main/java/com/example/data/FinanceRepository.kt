@@ -57,6 +57,7 @@ class FinanceRepository(private val financeDao: FinanceDao) {
 
     suspend fun insertCustomCategory(category: CustomCategory): Long = financeDao.insertCustomCategory(category)
     suspend fun deleteCustomCategory(category: CustomCategory) = financeDao.deleteCustomCategory(category)
+    suspend fun getAllCustomCategoriesList(): List<CustomCategory> = financeDao.getAllCustomCategoriesList()
 
     // CREDIT CARDS
     val allCreditCards: Flow<List<CreditCard>> = financeDao.getAllCreditCards()

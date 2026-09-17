@@ -1,5 +1,6 @@
 package com.example.sms
 
+import com.example.data.CustomCategory
 import java.util.Locale
 import java.util.regex.Pattern
 
@@ -17,10 +18,10 @@ data class ParsedSmsTransaction(
 
 object SmsParser {
 
-    // Regex for extracting amounts (e.g. INR 450.00, Rs. 1,200.50, ₹350, USD 20)
+    // Regex for extracting amounts (e.g. INR 450.00, Rs.5000, Rs. 1,200.50, ₹350, USD 20, $50, €75, AED 120, ¥1500)
     private val amountPatterns = listOf(
-        Pattern.compile("""(?:INR|Rs\.?|₹|USD|\$|EUR|€|GBP|£)\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)""", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("""(?:amount|spent|debited|credited|paid|received|txn of|charge of)\s*(?:of\s*)?(?:INR|Rs\.?|₹|USD|\$|EUR|€|GBP|£)?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)""", Pattern.CASE_INSENSITIVE)
+        Pattern.compile("""(?:INR|Rs|₹|USD|\$|EUR|€|GBP|£|AED|CAD|AUD|JPY|¥|SAR|SGD|CHF|NZD|SEK|kr)\.?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]{1,2})?)""", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("""(?:amount|spent|debited|credited|paid|received|txn of|charge of|withdrawn)\s*(?:of\s*)?(?:INR|Rs|₹|USD|\$|EUR|€|GBP|£|AED|CAD|AUD|JPY|¥|SAR|SGD|CHF|NZD|SEK|kr)?\.?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]{1,2})?)""", Pattern.CASE_INSENSITIVE)
     )
 
     private val refundKeywords = listOf(
@@ -37,8 +38,9 @@ object SmsParser {
     )
 
     private val cardPatterns = listOf(
-        Pattern.compile("""(?:card|ending|xx|x{2,}|[*]{2,}|ending with|a/c|acct)[\s:]*([0-9]{4})""", Pattern.CASE_INSENSITIVE),
-        Pattern.compile("""([0-9]{4})\s*(?:debited|credited|used)""", Pattern.CASE_INSENSITIVE)
+        Pattern.compile("""(?:a\/c|acct|account|card|ending|ending with|no\.?|num)[\s:\.\-]*[xX*]*\s*([0-9]{4})\b""", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("""\b[xX*]{1,}[\s:\-]*([0-9]{4})\b""", Pattern.CASE_INSENSITIVE),
+        Pattern.compile("""([0-9]{4})\s*(?:debited|credited|used|swiped)""", Pattern.CASE_INSENSITIVE)
     )
 
     private val merchantPatterns = listOf(
@@ -46,7 +48,11 @@ object SmsParser {
         Pattern.compile("""VPA\s+([A-Za-z0-9\.\@\_\-]+)""", Pattern.CASE_INSENSITIVE)
     )
 
-    fun parseSms(sender: String, body: String): ParsedSmsTransaction? {
+    fun parseSms(
+        sender: String,
+        body: String,
+        customCategories: List<CustomCategory> = emptyList()
+    ): ParsedSmsTransaction? {
         val lowerBody = body.lowercase(Locale.getDefault())
 
         // 1. Filter out pure OTP / promo spam messages without transaction verbs
@@ -119,10 +125,15 @@ object SmsParser {
         }
 
         // 5. Extract Payment Method
+        val hasAccount = lowerBody.contains("a/c") || lowerBody.contains("acct") || lowerBody.contains("account") || lowerBody.contains("atm ") || lowerBody.contains("withdrawn at") || lowerBody.contains("neft") || lowerBody.contains("imps") || lowerBody.contains("netbanking")
+        val hasCreditCard = lowerBody.contains("credit card") || lowerBody.contains("creditcard") || lowerBody.contains("card ending") || lowerBody.contains("cc ending") || (lowerBody.contains("card") && (lowerBody.contains("swiped") || lowerBody.contains("spent on card") || lowerBody.contains("used on card") || lowerBody.contains("card limit")))
+        val hasUpi = lowerBody.contains("upi") || lowerBody.contains("vpa") || lowerBody.contains("gpay") || lowerBody.contains("phonepe") || lowerBody.contains("paytm")
+
         val paymentMethod = when {
-            lowerBody.contains("credit card") || lowerBody.contains("card ending") || lowerBody.contains("cc ") || (lastFourDigits.isNotEmpty() && lowerBody.contains("card")) -> "Credit Card"
-            lowerBody.contains("upi") || lowerBody.contains("vpa") || lowerBody.contains("gpay") || lowerBody.contains("phonepe") || lowerBody.contains("paytm") -> "UPI"
-            lowerBody.contains("a/c") || lowerBody.contains("acct") || lowerBody.contains("account") || lowerBody.contains("neft") || lowerBody.contains("imps") || lowerBody.contains("netbanking") -> "Bank"
+            hasAccount -> "Bank"
+            hasCreditCard -> "Credit Card"
+            hasUpi -> "UPI"
+            lowerBody.contains("card") && !lowerBody.contains("block your card") && !lowerBody.contains("block card") -> "Credit Card"
             else -> if (type == "INCOME") "Bank" else "UPI"
         }
 
@@ -144,8 +155,8 @@ object SmsParser {
             merchant = cleanSenderName(sender)
         }
 
-        // 7. Predict Category
-        val suggestedCategory = guessCategory(merchant, lowerBody, type)
+        // 7. Predict Category with Custom Category Intelligence
+        val suggestedCategory = guessCategory(merchant, lowerBody, type, customCategories)
 
         return ParsedSmsTransaction(
             amount = amount,
@@ -189,72 +200,180 @@ object SmsParser {
         }
     }
 
-    private fun guessCategory(merchant: String, body: String, type: String): String {
-        if (type == "INCOME") {
-            return if (body.contains("salary") || merchant.contains("salary", ignoreCase = true)) "Salary"
-            else if (body.contains("refund") || body.contains("cashback") || merchant.contains("refund", ignoreCase = true)) "Refund"
-            else "Other Income"
+    private fun guessCategory(
+        merchant: String,
+        body: String,
+        type: String,
+        customCategories: List<CustomCategory> = emptyList()
+    ): String {
+        val text = (merchant + " " + body).lowercase(Locale.getDefault())
+        val effectiveType = if (type == "REFUND") "INCOME" else type
+
+        // Filter custom categories matching the transaction type (or type is empty)
+        val relevantCustom = customCategories.filter {
+            it.type.equals(effectiveType, ignoreCase = true) || it.type.equals(type, ignoreCase = true)
         }
 
-        val text = (merchant + " " + body).lowercase(Locale.getDefault())
+        // 1. Direct name match or constituent word match against user custom categories and subcategories
+        if (relevantCustom.isNotEmpty()) {
+            for (custom in relevantCustom) {
+                val catName = custom.name.trim().lowercase(Locale.getDefault())
+                if (catName.length >= 3) {
+                    if (text.contains(catName)) {
+                        return custom.parentCategory ?: custom.name
+                    }
+                    val words = catName.split(" ", "/", "&", "-", "_").map { it.trim() }.filter { it.length >= 4 }
+                    if (words.any { text.contains(it) }) {
+                        return custom.parentCategory ?: custom.name
+                    }
+                }
+            }
+        }
 
+        // 2. Income Categorization
+        if (type == "INCOME" || effectiveType == "INCOME") {
+            return when {
+                body.contains("salary") || merchant.contains("salary", ignoreCase = true) || text.contains("payroll") || text.contains("stipend") -> {
+                    findMatchingCategoryName(listOf("Salary", "Job", "Payroll", "Income"), relevantCustom) ?: "Salary"
+                }
+                body.contains("refund") || body.contains("cashback") || merchant.contains("refund", ignoreCase = true) || text.contains("reversal") -> {
+                    findMatchingCategoryName(listOf("Refund", "Cashback", "Rewards"), relevantCustom) ?: "Refund"
+                }
+                text.contains("freelance") || text.contains("upwork") || text.contains("fiverr") || text.contains("consulting") -> {
+                    findMatchingCategoryName(listOf("Freelancing", "Freelance", "Consulting", "Projects"), relevantCustom) ?: "Freelancing"
+                }
+                text.contains("rent") || text.contains("rental") || text.contains("tenant") -> {
+                    findMatchingCategoryName(listOf("Rentals", "Rent", "Rental Income"), relevantCustom) ?: "Rentals"
+                }
+                text.contains("dividend") || text.contains("interest") || text.contains("capital gain") || text.contains("zerodha") || text.contains("groww") -> {
+                    findMatchingCategoryName(listOf("Investment Payouts", "Investments", "Dividends", "Interest"), relevantCustom) ?: "Investment Payouts"
+                }
+                else -> {
+                    findMatchingCategoryName(listOf("Other Income", "Others", "General Income"), relevantCustom) ?: "Other Income"
+                }
+            }
+        }
+
+        // 3. Expense Categorization with Custom Category Preference Mapping
         return when {
-            // Food & Dining / Groceries
+            // Food & Dining
             text.contains("swiggy") || text.contains("zomato") || text.contains("eatclub") ||
             text.contains("starbucks") || text.contains("mcdonald") || text.contains("kfc") ||
             text.contains("dominos") || text.contains("pizza") || text.contains("burger") ||
             text.contains("restaurant") || text.contains("cafe") || text.contains("food") ||
             text.contains("bakery") || text.contains("chai") || text.contains("tea") ||
-            text.contains("barbeque") || text.contains("dine") ||
+            text.contains("barbeque") || text.contains("dine") -> {
+                findMatchingCategoryName(listOf("Dining Out", "Food & Dining", "Dining", "Restaurants", "Food", "Food & Drinks"), relevantCustom) ?: "Food"
+            }
+
+            // Groceries & Marts
             text.contains("blinkit") || text.contains("zepto") || text.contains("instamart") ||
             text.contains("bigbasket") || text.contains("dmart") || text.contains("spencer") ||
-            text.contains("grocery") || text.contains("supermart") || text.contains("supermarket") ||
-            text.contains("milk") || text.contains("vegetable") || text.contains("fruit") -> "Food"
+            text.contains("grocery") || text.contains("groceries") || text.contains("supermart") ||
+            text.contains("supermarket") || text.contains("milk") || text.contains("vegetable") ||
+            text.contains("fruit") -> {
+                findMatchingCategoryName(listOf("Groceries", "Grocery", "Daily Needs", "Supermarket", "Food"), relevantCustom) ?: "Food"
+            }
 
             // Fuel & Vehicle
             text.contains("fuel") || text.contains("petrol") || text.contains("diesel") ||
             text.contains("indianoil") || text.contains("iocl") || text.contains("hpcl") ||
             text.contains("bpcl") || text.contains("shell") || text.contains("fastag") ||
-            text.contains("parking") || text.contains("toll") || text.contains("challan") -> "Vehicle"
+            text.contains("parking") || text.contains("toll") || text.contains("challan") -> {
+                findMatchingCategoryName(listOf("Fuel", "Petrol", "Vehicle", "Transportation", "Car", "Bike"), relevantCustom) ?: "Vehicle"
+            }
 
             // Travel & Commute
             text.contains("uber") || text.contains("ola") || text.contains("rapido") ||
             text.contains("metro") || text.contains("irctc") || text.contains("flight") ||
             text.contains("indigo") || text.contains("airindia") || text.contains("makemytrip") ||
-            text.contains("mmt") || text.contains("easemytrip") || text.contains("train") -> "Travel / Commute"
+            text.contains("mmt") || text.contains("easemytrip") || text.contains("train") ||
+            text.contains("taxi") || text.contains("cab") -> {
+                findMatchingCategoryName(listOf("Cab", "Taxi", "Commute", "Travel / Commute", "Travel", "Transport"), relevantCustom) ?: "Travel / Commute"
+            }
 
-            // Shopping
+            // Shopping & Apparel
             text.contains("amazon") || text.contains("amzn") || text.contains("flipkart") ||
             text.contains("myntra") || text.contains("ajio") || text.contains("zara") ||
             text.contains("h&m") || text.contains("uniqlo") || text.contains("nykaa") ||
             text.contains("meesho") || text.contains("clothing") || text.contains("retail") ||
-            text.contains("mall") || text.contains("store") -> "Shopping"
+            text.contains("mall") || text.contains("store") -> {
+                findMatchingCategoryName(listOf("Online Shopping", "Shopping", "Apparel", "Clothes", "E-Commerce"), relevantCustom) ?: "Shopping"
+            }
 
-            // Entertainment
+            // Entertainment & Subscriptions
             text.contains("netflix") || text.contains("spotify") || text.contains("hotstar") ||
             text.contains("prime") || text.contains("youtube") || text.contains("apple") ||
             text.contains("pvr") || text.contains("inox") || text.contains("bookmyshow") ||
             text.contains("cinema") || text.contains("movie") || text.contains("game") ||
-            text.contains("steam") || text.contains("playstation") -> "Entertainment"
+            text.contains("steam") || text.contains("playstation") -> {
+                findMatchingCategoryName(listOf("OTT", "Movies", "Cinema", "Entertainment", "Gaming", "Subscriptions"), relevantCustom) ?: "Entertainment"
+            }
 
             // Home / Bills & Utilities
             text.contains("airtel") || text.contains("jio") || text.contains("vi") ||
             text.contains("vodafone") || text.contains("recharge") || text.contains("bescom") ||
             text.contains("electricity") || text.contains("gas") || text.contains("lpg") ||
             text.contains("indane") || text.contains("water") || text.contains("broadband") ||
-            text.contains("maintenance") || text.contains("rent") -> "Home"
+            text.contains("maintenance") || text.contains("rent") -> {
+                findMatchingCategoryName(listOf("Utilities", "Bills & Utilities", "Bills", "Home", "Rent"), relevantCustom) ?: "Home"
+            }
 
-            // Health
+            // Health & Fitness
             text.contains("apollo") || text.contains("1mg") || text.contains("pharmeasy") ||
             text.contains("medplus") || text.contains("clinic") || text.contains("hospital") ||
-            text.contains("doctor") || text.contains("pharmacy") || text.contains("cult") ||
-            text.contains("gym") || text.contains("fitness") -> "Health"
+            text.contains("doctor") || text.contains("pharmacy") || text.contains("medicines") -> {
+                findMatchingCategoryName(listOf("Pharmacy", "Medical", "Healthcare", "Health"), relevantCustom) ?: "Health"
+            }
+            text.contains("cult") || text.contains("gym") || text.contains("fitness") -> {
+                findMatchingCategoryName(listOf("Gym", "Fitness", "Health"), relevantCustom) ?: "Health"
+            }
 
             // Insurance & Loans
             text.contains("emi") || text.contains("insurance") || text.contains("policybazaar") ||
-            text.contains("lic") || text.contains("hdfc life") || text.contains("max life") -> "Insurance / Loan"
+            text.contains("lic") || text.contains("hdfc life") || text.contains("max life") || text.contains("loan") -> {
+                findMatchingCategoryName(listOf("Loans", "EMI", "Insurance", "Insurance / Loan"), relevantCustom) ?: "Insurance / Loan"
+            }
 
-            else -> "Food"
+            // Work & Education
+            text.contains("office") || text.contains("coworking") || text.contains("saas") -> {
+                findMatchingCategoryName(listOf("Work / Office", "Office", "Work"), relevantCustom) ?: "Work / Office"
+            }
+            text.contains("college") || text.contains("school") || text.contains("udemy") ||
+            text.contains("coursera") || text.contains("tuition") || text.contains("books") -> {
+                findMatchingCategoryName(listOf("Education", "Courses", "Studies"), relevantCustom) ?: "Education"
+            }
+
+            // Pets
+            text.contains("vet") || text.contains("pet") || text.contains("dog") || text.contains("cat") -> {
+                findMatchingCategoryName(listOf("Pets", "Pet Care"), relevantCustom) ?: "Pets"
+            }
+
+            else -> {
+                findMatchingCategoryName(listOf("Food", "Others", "General", "Miscellaneous"), relevantCustom) ?: "Food"
+            }
         }
+    }
+
+    private fun findMatchingCategoryName(
+        preferredNames: List<String>,
+        customCategories: List<CustomCategory>
+    ): String? {
+        if (customCategories.isEmpty()) return null
+        // 1. Exact case-insensitive match
+        for (pref in preferredNames) {
+            val match = customCategories.firstOrNull {
+                it.name.equals(pref, ignoreCase = true) && it.parentCategory == null
+            }
+            if (match != null) return match.name
+        }
+        // 2. Contains / partial match (e.g. "Freelance" matches "Software Freelance")
+        for (pref in preferredNames) {
+            val partial = customCategories.firstOrNull {
+                (it.name.contains(pref, ignoreCase = true) || pref.contains(it.name, ignoreCase = true)) && it.parentCategory == null
+            }
+            if (partial != null) return partial.name
+        }
+        return null
     }
 }

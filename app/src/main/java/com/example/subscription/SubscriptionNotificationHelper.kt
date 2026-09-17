@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
 import com.example.data.Subscription
+import com.example.ui.util.NumberFormatConfig
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -132,7 +133,7 @@ object SubscriptionNotificationHelper {
 
             val dateFormat = SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault())
             val formattedDate = dateFormat.format(Date(sub.renewalDate))
-            val formattedCost = "₹${String.format(Locale.getDefault(), "%,.2f", sub.cost)}"
+            val formattedCost = NumberFormatConfig.formatAmount(sub.cost)
 
             val title = when {
                 daysUntilRenewal <= 0 -> "⚠️ Renewal Alert: ${sub.name} is due today ($formattedCost)"

@@ -5,8 +5,12 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.Subscription
 import com.example.export.BackupEngine
 import com.example.export.FullBackupData
+import com.example.export.UserPreferencesBackup
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -67,5 +71,74 @@ class ExampleRobolectricTest {
     assertEquals(originalSub.paymentAccountId, restoredSub.paymentAccountId)
     assertEquals(originalSub.paymentMethodName, restoredSub.paymentMethodName)
     assertEquals(originalSub.lastPaidDate, restoredSub.lastPaidDate)
+  }
+
+  @Test
+  fun `test backup and restore with user preferences`() {
+    val userPrefs = UserPreferencesBackup(
+      cashOnlyMode = true,
+      numberFormatPreference = "INDIAN",
+      smsDetectionEnabled = false,
+      currencySymbol = "$",
+      currencyCode = "USD",
+      isDarkTheme = true
+    )
+
+    val fullBackupData = FullBackupData(
+      transactions = emptyList(),
+      bankAccounts = emptyList(),
+      creditCards = emptyList(),
+      customCategories = emptyList(),
+      budgets = emptyList(),
+      assets = emptyList(),
+      subscriptions = emptyList(),
+      savingsGoals = emptyList(),
+      borrowLends = emptyList(),
+      wishlists = emptyList(),
+      userPreferences = userPrefs
+    )
+
+    val json = BackupEngine.buildBackupJsonString(fullBackupData)
+    val result = BackupEngine.parseBackupJson(json)
+
+    assertNotNull(result)
+    val (restoredData, stats) = result!!
+    assertTrue(stats.hasUserPreferences)
+    assertNotNull(restoredData.userPreferences)
+
+    val restoredPrefs = restoredData.userPreferences!!
+    assertEquals(true, restoredPrefs.cashOnlyMode)
+    assertEquals("INDIAN", restoredPrefs.numberFormatPreference)
+    assertEquals(false, restoredPrefs.smsDetectionEnabled)
+    assertEquals("$", restoredPrefs.currencySymbol)
+    assertEquals("USD", restoredPrefs.currencyCode)
+    assertEquals(true, restoredPrefs.isDarkTheme)
+  }
+
+  @Test
+  fun `test backup and restore backward compatibility without user preferences`() {
+    val legacyJson = """
+    {
+      "app_name": "Expense Manager",
+      "schema_version": 1,
+      "export_timestamp": 1772000000000,
+      "transactions": [],
+      "bank_accounts": [],
+      "credit_cards": [],
+      "custom_categories": [],
+      "budgets": [],
+      "assets": [],
+      "subscriptions": [],
+      "savings_goals": [],
+      "borrow_lend": [],
+      "wishlist": []
+    }
+    """.trimIndent()
+
+    val result = BackupEngine.parseBackupJson(legacyJson)
+    assertNotNull(result)
+    val (restoredData, stats) = result!!
+    assertFalse(stats.hasUserPreferences)
+    assertNull(restoredData.userPreferences)
   }
 }

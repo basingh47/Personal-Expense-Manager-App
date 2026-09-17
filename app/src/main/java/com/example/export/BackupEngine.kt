@@ -7,6 +7,15 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
+data class UserPreferencesBackup(
+    val cashOnlyMode: Boolean = false,
+    val numberFormatPreference: String = "AUTO",
+    val smsDetectionEnabled: Boolean = true,
+    val currencySymbol: String = "₹",
+    val currencyCode: String = "INR",
+    val isDarkTheme: Boolean? = null
+)
+
 data class FullBackupData(
     val transactions: List<Transaction>,
     val bankAccounts: List<BankAccount>,
@@ -17,7 +26,8 @@ data class FullBackupData(
     val subscriptions: List<Subscription>,
     val savingsGoals: List<SavingsGoal>,
     val borrowLends: List<BorrowLend>,
-    val wishlists: List<Wishlist>
+    val wishlists: List<Wishlist>,
+    val userPreferences: UserPreferencesBackup? = null
 )
 
 data class BackupStats(
@@ -33,7 +43,8 @@ data class BackupStats(
     val totalSubscriptions: Int,
     val totalSavingsGoals: Int,
     val totalBorrowLends: Int,
-    val totalWishlist: Int
+    val totalWishlist: Int,
+    val hasUserPreferences: Boolean = false
 )
 
 object BackupEngine {
@@ -215,10 +226,26 @@ object BackupEngine {
                 put("targetDate", w.targetDate)
                 put("notes", w.notes)
                 put("isPurchased", w.isPurchased)
+                if (w.purchasedTransactionId != null) {
+                    put("purchasedTransactionId", w.purchasedTransactionId)
+                }
             }
             wishArray.put(obj)
         }
         root.put("wishlist", wishArray)
+
+        // 11. User Preferences (Optional)
+        data.userPreferences?.let { prefs ->
+            val prefObj = JSONObject().apply {
+                put("cash_only_mode", prefs.cashOnlyMode)
+                put("number_format_preference", prefs.numberFormatPreference)
+                put("sms_detection_enabled", prefs.smsDetectionEnabled)
+                put("currency_symbol", prefs.currencySymbol)
+                put("currency_code", prefs.currencyCode)
+                prefs.isDarkTheme?.let { put("is_dark_theme", it) }
+            }
+            root.put("user_preferences", prefObj)
+        }
 
         return root.toString(2)
     }
@@ -427,10 +454,26 @@ object BackupEngine {
                         priority = o.optString("priority", "MEDIUM"),
                         targetDate = o.optLong("targetDate", 0L),
                         notes = o.optString("notes", ""),
-                        isPurchased = o.optBoolean("isPurchased", false)
+                        isPurchased = o.optBoolean("isPurchased", false),
+                        purchasedTransactionId = if (o.has("purchasedTransactionId") && !o.isNull("purchasedTransactionId")) o.optLong("purchasedTransactionId") else null
                     )
                 )
             }
+
+            // Parse User Preferences (Optional)
+            val userPreferences = if (root.has("user_preferences") || root.has("userPreferences")) {
+                val pObj = root.optJSONObject("user_preferences") ?: root.optJSONObject("userPreferences")
+                if (pObj != null) {
+                    UserPreferencesBackup(
+                        cashOnlyMode = if (pObj.has("cash_only_mode")) pObj.optBoolean("cash_only_mode") else pObj.optBoolean("cashOnlyMode", false),
+                        numberFormatPreference = if (pObj.has("number_format_preference")) pObj.optString("number_format_preference", "AUTO") else pObj.optString("numberFormatPreference", "AUTO"),
+                        smsDetectionEnabled = if (pObj.has("sms_detection_enabled")) pObj.optBoolean("sms_detection_enabled", true) else pObj.optBoolean("smsDetectionEnabled", true),
+                        currencySymbol = if (pObj.has("currency_symbol")) pObj.optString("currency_symbol", "₹") else pObj.optString("currencySymbol", "₹"),
+                        currencyCode = if (pObj.has("currency_code")) pObj.optString("currency_code", "INR") else pObj.optString("currencyCode", "INR"),
+                        isDarkTheme = if (pObj.has("is_dark_theme")) pObj.optBoolean("is_dark_theme") else if (pObj.has("isDarkTheme")) pObj.optBoolean("isDarkTheme") else null
+                    )
+                } else null
+            } else null
 
             val data = FullBackupData(
                 transactions = txList,
@@ -442,7 +485,8 @@ object BackupEngine {
                 subscriptions = subList,
                 savingsGoals = goalList,
                 borrowLends = blList,
-                wishlists = wishList
+                wishlists = wishList,
+                userPreferences = userPreferences
             )
 
             val stats = BackupStats(
@@ -458,7 +502,8 @@ object BackupEngine {
                 totalSubscriptions = subList.size,
                 totalSavingsGoals = goalList.size,
                 totalBorrowLends = blList.size,
-                totalWishlist = wishList.size
+                totalWishlist = wishList.size,
+                hasUserPreferences = userPreferences != null
             )
 
             Pair(data, stats)

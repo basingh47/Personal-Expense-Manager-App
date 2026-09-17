@@ -9,6 +9,7 @@ import com.example.export.*
 import com.example.sms.SmsNotificationHelper
 import com.example.sms.SmsParser
 import com.example.subscription.SubscriptionNotificationHelper
+import com.example.ui.util.NumberFormatConfig
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
@@ -154,19 +155,100 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     private val _deleteConfirmation = MutableStateFlow<DeleteConfirmationRequest?>(null)
     val deleteConfirmation = _deleteConfirmation.asStateFlow()
 
-    private val _excludeCreditCards = MutableStateFlow(false)
+    private val _excludeCreditCards = MutableStateFlow(sharedPrefs.getBoolean("cash_only_mode", false))
     val excludeCreditCards = _excludeCreditCards.asStateFlow()
+
+    private val _numberFormatPreference = MutableStateFlow(sharedPrefs.getString("number_format_preference", "AUTO") ?: "AUTO")
+    val numberFormatPreference = _numberFormatPreference.asStateFlow()
+
+    private val _currencySymbol = MutableStateFlow(sharedPrefs.getString("currency_symbol", "₹") ?: "₹")
+    val currencySymbol = _currencySymbol.asStateFlow()
+
+    private val _currencyCode = MutableStateFlow(sharedPrefs.getString("currency_code", "INR") ?: "INR")
+    val currencyCode = _currencyCode.asStateFlow()
+
+    init {
+        NumberFormatConfig.activePreference = _numberFormatPreference.value
+        NumberFormatConfig.currencySymbol = _currencySymbol.value
+        NumberFormatConfig.currencyCode = _currencyCode.value
+    }
 
     private val _isSmsDetectionEnabled = MutableStateFlow(sharedPrefs.getBoolean("sms_detection_enabled", true))
     val isSmsDetectionEnabled = _isSmsDetectionEnabled.asStateFlow()
 
+    fun setCurrency(symbol: String, code: String = "", defaultNumberFormat: String? = null) {
+        _currencySymbol.value = symbol
+        NumberFormatConfig.currencySymbol = symbol
+        sharedPrefs.edit().putString("currency_symbol", symbol).apply()
+
+        if (code.isNotBlank()) {
+            _currencyCode.value = code
+            NumberFormatConfig.currencyCode = code
+            sharedPrefs.edit().putString("currency_code", code).apply()
+        }
+
+        if (defaultNumberFormat != null && _numberFormatPreference.value == "AUTO") {
+            // Keep AUTO but ensure NumberFormatConfig has correct context
+            NumberFormatConfig.activePreference = "AUTO"
+        }
+
+        val user = firebaseAuth.currentUser
+        if (user != null) {
+            val prefData = mutableMapOf<String, Any>(
+                "currencySymbol" to symbol,
+                "currencyCode" to _currencyCode.value,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore.collection("users").document(user.uid)
+                .collection("settings").document("preferences")
+                .set(prefData, com.google.firebase.firestore.SetOptions.merge())
+        }
+    }
+
+    fun setNumberFormatPreference(format: String) {
+        _numberFormatPreference.value = format
+        NumberFormatConfig.activePreference = format
+        sharedPrefs.edit().putString("number_format_preference", format).apply()
+        val user = firebaseAuth.currentUser
+        if (user != null) {
+            val prefData = mapOf(
+                "numberFormatPreference" to format,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore.collection("users").document(user.uid)
+                .collection("settings").document("preferences")
+                .set(prefData, com.google.firebase.firestore.SetOptions.merge())
+        }
+    }
+
     fun setSmsDetectionEnabled(enabled: Boolean) {
         _isSmsDetectionEnabled.value = enabled
         sharedPrefs.edit().putBoolean("sms_detection_enabled", enabled).apply()
+        val user = firebaseAuth.currentUser
+        if (user != null) {
+            val prefData = mapOf(
+                "smsDetectionEnabled" to enabled,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore.collection("users").document(user.uid)
+                .collection("settings").document("preferences")
+                .set(prefData, com.google.firebase.firestore.SetOptions.merge())
+        }
     }
 
     fun setExcludeCreditCards(exclude: Boolean) {
         _excludeCreditCards.value = exclude
+        sharedPrefs.edit().putBoolean("cash_only_mode", exclude).apply()
+        val user = firebaseAuth.currentUser
+        if (user != null) {
+            val prefData = mapOf(
+                "cashOnlyMode" to exclude,
+                "updatedAt" to System.currentTimeMillis()
+            )
+            firestore.collection("users").document(user.uid)
+                .collection("settings").document("preferences")
+                .set(prefData, com.google.firebase.firestore.SetOptions.merge())
+        }
     }
 
     fun requestDeleteConfirmation(title: String, message: String, onConfirm: () -> Unit) {
@@ -531,14 +613,28 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         searchText,
         filterOptions
     ) { list, search, filters ->
+        val trimmedSearch = search.trim()
+        val searchWithoutCommas = trimmedSearch.replace(",", "")
+        val searchCleanedAmount = searchWithoutCommas.replace("₹", "").replace("$", "").replace("€", "").replace("£", "").trim()
+
         list.filter { tx ->
-            val matchSearch = search.isBlank() || 
-                tx.merchant.contains(search, ignoreCase = true) ||
-                tx.category.contains(search, ignoreCase = true) ||
-                tx.subcategory.contains(search, ignoreCase = true) ||
-                tx.notes.contains(search, ignoreCase = true) ||
-                tx.tagsString.contains(search, ignoreCase = true) ||
-                tx.amount.toString().contains(search)
+            val amountStr = tx.amount.toString()
+            val amountIntStr = if (tx.amount % 1.0 == 0.0) tx.amount.toLong().toString() else ""
+            val amountFormatted = String.format(Locale.US, "%.2f", tx.amount)
+
+            val matchAmount = if (searchCleanedAmount.isNotEmpty()) {
+                amountStr.contains(searchCleanedAmount) ||
+                (amountIntStr.isNotEmpty() && amountIntStr.contains(searchCleanedAmount)) ||
+                amountFormatted.contains(searchCleanedAmount)
+            } else false
+
+            val matchSearch = trimmedSearch.isBlank() || 
+                tx.merchant.contains(trimmedSearch, ignoreCase = true) ||
+                tx.category.contains(trimmedSearch, ignoreCase = true) ||
+                tx.subcategory.contains(trimmedSearch, ignoreCase = true) ||
+                tx.notes.contains(trimmedSearch, ignoreCase = true) ||
+                tx.tagsString.contains(trimmedSearch, ignoreCase = true) ||
+                matchAmount
 
             val matchType = filters.type == null || tx.type == filters.type
             val matchCategory = filters.cat == null || tx.category == filters.cat
@@ -629,7 +725,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     fun simulateSmsReceived(sender: String, body: String) {
         viewModelScope.launch {
-            val parsed = SmsParser.parseSms(sender, body) ?: return@launch
+            val customCats = repository.getAllCustomCategoriesList()
+            val parsed = SmsParser.parseSms(sender, body, customCats) ?: return@launch
             val bankList = repository.getAllBankAccountsList()
             val cards = repository.getAllCreditCardsList()
 
@@ -1199,7 +1296,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "priority" to item.priority,
                     "targetDate" to item.targetDate,
                     "notes" to item.notes,
-                    "isPurchased" to item.isPurchased
+                    "isPurchased" to item.isPurchased,
+                    "purchasedTransactionId" to item.purchasedTransactionId
                 )
                 firestore.collection("users").document(user.uid).collection("wishlist")
                     .document(id.toString()).set(data)
@@ -1209,33 +1307,100 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleWishlistItemPurchased(item: Wishlist) {
         viewModelScope.launch {
-            val updated = item.copy(isPurchased = !item.isPurchased)
-            val id = repository.insertWishlistItem(updated)
-            val user = firebaseAuth.currentUser
-            if (user != null) {
-                firestore.collection("users").document(user.uid).collection("wishlist")
-                    .document(item.id.toString()).update("isPurchased", updated.isPurchased)
-            }
-            
-            // Proactively offer to record as an expense if purchased!
-            if (updated.isPurchased) {
-                addTransaction(
-                    Transaction(
-                        amount = updated.price,
-                        category = "Shopping",
-                        subcategory = "Electronics",
-                        paymentMethod = "UPI",
-                        merchant = updated.name,
-                        notes = "Purchased from Wishlist: ${updated.notes}",
-                        type = "EXPENSE"
-                    )
+            val willBePurchased = !item.isPurchased
+            if (willBePurchased) {
+                // Record expense in transaction ledger and link its id to the wishlist item
+                val newTx = Transaction(
+                    amount = item.price,
+                    category = "Shopping",
+                    subcategory = "Wishlist",
+                    paymentMethod = "UPI",
+                    merchant = item.name,
+                    notes = if (item.notes.isNotBlank()) "Purchased from Wishlist: ${item.notes}" else "Purchased from Wishlist",
+                    type = "EXPENSE",
+                    date = System.currentTimeMillis()
                 )
+                val txId = repository.insertTransaction(newTx)
+                val user = firebaseAuth.currentUser
+                if (user != null) {
+                    val txData = mapOf(
+                        "id" to txId,
+                        "date" to newTx.date,
+                        "amount" to newTx.amount,
+                        "category" to newTx.category,
+                        "subcategory" to newTx.subcategory,
+                        "paymentMethod" to newTx.paymentMethod,
+                        "merchant" to newTx.merchant,
+                        "notes" to newTx.notes,
+                        "tagsString" to newTx.tagsString,
+                        "type" to newTx.type,
+                        "assetId" to newTx.assetId,
+                        "creditCardId" to newTx.creditCardId,
+                        "bankAccountId" to newTx.bankAccountId
+                    )
+                    firestore.collection("users").document(user.uid).collection("transactions")
+                        .document(txId.toString()).set(txData)
+                }
+
+                val updated = item.copy(isPurchased = true, purchasedTransactionId = txId)
+                repository.insertWishlistItem(updated)
+                if (user != null) {
+                    val wishData = mapOf(
+                        "id" to updated.id,
+                        "name" to updated.name,
+                        "price" to updated.price,
+                        "priority" to updated.priority,
+                        "targetDate" to updated.targetDate,
+                        "notes" to updated.notes,
+                        "isPurchased" to true,
+                        "purchasedTransactionId" to txId
+                    )
+                    firestore.collection("users").document(user.uid).collection("wishlist")
+                        .document(item.id.toString()).set(wishData)
+                }
+            } else {
+                // Moving back to Active Wish: Remove the linked expense from transactions & firestore
+                val linkedTxId = item.purchasedTransactionId
+                if (linkedTxId != null && linkedTxId > 0L) {
+                    repository.deleteTransactionsByIds(listOf(linkedTxId))
+                    val user = firebaseAuth.currentUser
+                    if (user != null) {
+                        firestore.collection("users").document(user.uid).collection("transactions")
+                            .document(linkedTxId.toString()).delete()
+                    }
+                }
+
+                val updated = item.copy(isPurchased = false, purchasedTransactionId = null)
+                repository.insertWishlistItem(updated)
+                val user = firebaseAuth.currentUser
+                if (user != null) {
+                    val wishData = mapOf(
+                        "id" to updated.id,
+                        "name" to updated.name,
+                        "price" to updated.price,
+                        "priority" to updated.priority,
+                        "targetDate" to updated.targetDate,
+                        "notes" to updated.notes,
+                        "isPurchased" to false,
+                        "purchasedTransactionId" to null
+                    )
+                    firestore.collection("users").document(user.uid).collection("wishlist")
+                        .document(item.id.toString()).set(wishData)
+                }
             }
         }
     }
 
-    fun deleteWishlistItem(item: Wishlist) {
+    fun deleteWishlistItem(item: Wishlist, deleteLinkedExpense: Boolean = true) {
         viewModelScope.launch {
+            if (deleteLinkedExpense && item.purchasedTransactionId != null && item.purchasedTransactionId > 0L) {
+                repository.deleteTransactionsByIds(listOf(item.purchasedTransactionId))
+                val user = firebaseAuth.currentUser
+                if (user != null) {
+                    firestore.collection("users").document(user.uid).collection("transactions")
+                        .document(item.purchasedTransactionId.toString()).delete()
+                }
+            }
             repository.deleteWishlistItem(item)
             val user = firebaseAuth.currentUser
             if (user != null) {
@@ -1273,6 +1438,27 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     .document(card.id.toString()).delete()
             }
         }
+    }
+
+    // CREDIT CARD CALCULATIONS WITH REFUND & PAYMENT OFFSET
+    fun calculateCreditCardOutstanding(cardId: Long, transactions: List<Transaction>): Double {
+        val expenses = transactions.filter { it.creditCardId == cardId && it.type == "EXPENSE" }.sumOf { it.amount }
+        val refundsAndCredits = transactions.filter {
+            (it.creditCardId == cardId && (it.type == "REFUND" || it.type == "INCOME")) ||
+            (it.toCreditCardId == cardId && it.type == "TRANSFER")
+        }.sumOf { it.amount }
+        return maxOf(0.0, expenses - refundsAndCredits)
+    }
+
+    fun calculateCreditCardAvailableLimit(card: CreditCard, transactions: List<Transaction>): Double {
+        val outstanding = calculateCreditCardOutstanding(card.id, transactions)
+        return maxOf(0.0, card.cardLimit - outstanding)
+    }
+
+    fun calculateCreditCardUtilization(card: CreditCard, transactions: List<Transaction>): Double {
+        if (card.cardLimit <= 0) return 0.0
+        val outstanding = calculateCreditCardOutstanding(card.id, transactions)
+        return (outstanding / card.cardLimit).coerceIn(0.0, 1.0)
     }
 
     // BANK ACCOUNTS ACTIONS
@@ -1654,7 +1840,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                                     priority = doc.getString("priority") ?: "MEDIUM",
                                     targetDate = doc.getLong("targetDate") ?: 0L,
                                     notes = doc.getString("notes") ?: "",
-                                    isPurchased = doc.getBoolean("isPurchased") ?: false
+                                    isPurchased = doc.getBoolean("isPurchased") ?: false,
+                                    purchasedTransactionId = doc.getLong("purchasedTransactionId")
                                 )
                                 viewModelScope.launch { repository.insertWishlistItem(wish) }
                             }
@@ -1769,6 +1956,51 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                                 viewModelScope.launch { repository.insertBankAccount(bank) }
                             }
                         }
+                    }
+                }
+
+                // 11. User Preferences & Settings (Cash-Only Mode, SMS Detection & Number Format)
+                val settingsRef = firestore.collection("users").document(userId).collection("settings").document("preferences")
+                settingsRef.get().addOnSuccessListener { doc ->
+                    if (doc != null && doc.exists()) {
+                        val cloudCashOnly = doc.getBoolean("cashOnlyMode")
+                        if (cloudCashOnly != null) {
+                            _excludeCreditCards.value = cloudCashOnly
+                            sharedPrefs.edit().putBoolean("cash_only_mode", cloudCashOnly).apply()
+                        }
+                        val cloudSmsEnabled = doc.getBoolean("smsDetectionEnabled")
+                        if (cloudSmsEnabled != null) {
+                            _isSmsDetectionEnabled.value = cloudSmsEnabled
+                            sharedPrefs.edit().putBoolean("sms_detection_enabled", cloudSmsEnabled).apply()
+                        }
+                        val cloudNumberFormat = doc.getString("numberFormatPreference")
+                        if (!cloudNumberFormat.isNullOrBlank()) {
+                            _numberFormatPreference.value = cloudNumberFormat
+                            NumberFormatConfig.activePreference = cloudNumberFormat
+                            sharedPrefs.edit().putString("number_format_preference", cloudNumberFormat).apply()
+                        }
+                        val cloudCurrencySymbol = doc.getString("currencySymbol")
+                        if (!cloudCurrencySymbol.isNullOrBlank()) {
+                            _currencySymbol.value = cloudCurrencySymbol
+                            NumberFormatConfig.currencySymbol = cloudCurrencySymbol
+                            sharedPrefs.edit().putString("currency_symbol", cloudCurrencySymbol).apply()
+                        }
+                        val cloudCurrencyCode = doc.getString("currencyCode")
+                        if (!cloudCurrencyCode.isNullOrBlank()) {
+                            _currencyCode.value = cloudCurrencyCode
+                            NumberFormatConfig.currencyCode = cloudCurrencyCode
+                            sharedPrefs.edit().putString("currency_code", cloudCurrencyCode).apply()
+                        }
+                    } else {
+                        val initialPrefData = mapOf(
+                            "cashOnlyMode" to _excludeCreditCards.value,
+                            "smsDetectionEnabled" to _isSmsDetectionEnabled.value,
+                            "numberFormatPreference" to _numberFormatPreference.value,
+                            "currencySymbol" to _currencySymbol.value,
+                            "currencyCode" to _currencyCode.value,
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+                        settingsRef.set(initialPrefData, com.google.firebase.firestore.SetOptions.merge())
                     }
                 }
 
@@ -1941,6 +2173,43 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }.filterValues { it > 0.0 }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
+    // Monthly category spending for Budgets (Excluding transactions from accounts hidden from global summary/analytics, restricted to current month)
+    val budgetCategorySpendings = combine(transactions, bankAccounts, excludeCreditCards) { list, banks, exclude ->
+        val hiddenBankIds = banks.filter { it.isHiddenFromSummary }.map { it.id }.toSet()
+        val visibleList = list.filter { it.bankAccountId == null || it.bankAccountId !in hiddenBankIds }
+        val monthStart = Calendar.getInstance().apply {
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val filteredExpenses = if (exclude) {
+            val normalExpenses = visibleList.filter { it.type == "EXPENSE" && it.paymentMethod != "Credit Card" && it.date >= monthStart }
+            val cardPaymentsMapped = visibleList.filter { it.category == "Credit Card Payment" && it.date >= monthStart }.map {
+                it.copy(type = "EXPENSE")
+            }
+            normalExpenses + cardPaymentsMapped
+        } else {
+            visibleList.filter { it.type == "EXPENSE" && it.date >= monthStart }
+        }
+
+        val expenseMap = filteredExpenses.groupBy { it.category }
+            .mapValues { entry -> entry.value.sumOf { it.amount } }
+
+        val refundMap = visibleList.filter { it.type == "REFUND" && it.date >= monthStart }
+            .groupBy { it.category }
+            .mapValues { entry -> entry.value.sumOf { it.amount } }
+
+        val allCategories = expenseMap.keys + refundMap.keys
+        allCategories.associateWith { cat ->
+            val exp = expenseMap[cat] ?: 0.0
+            val ref = refundMap[cat] ?: 0.0
+            maxOf(0.0, exp - ref)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     // Highest expense of the month
     val highestExpenseOfMonth = combine(transactions, bankAccounts, excludeCreditCards) { list, banks, exclude ->
         val hiddenBankIds = banks.filter { it.isHiddenFromSummary }.map { it.id }.toSet()
@@ -1981,7 +2250,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                         dueDate = sub.renewalDate,
                         amount = sub.cost,
                         type = "SUBSCRIPTION",
-                        notes = "Renewal cost: ₹${sub.cost}"
+                        notes = "Renewal cost: ${NumberFormatConfig.currencySymbol}${sub.cost}"
                     )
                 )
             }
@@ -2297,6 +2566,16 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun exportFullBackup(context: Context, onComplete: ((Boolean) -> Unit)? = null) {
         viewModelScope.launch {
             try {
+                val isDark = if (sharedPrefs.contains("is_dark_theme")) sharedPrefs.getBoolean("is_dark_theme", true) else null
+                val userPrefs = UserPreferencesBackup(
+                    cashOnlyMode = _excludeCreditCards.value,
+                    numberFormatPreference = _numberFormatPreference.value,
+                    smsDetectionEnabled = _isSmsDetectionEnabled.value,
+                    currencySymbol = _currencySymbol.value,
+                    currencyCode = _currencyCode.value,
+                    isDarkTheme = isDark
+                )
+
                 val data = FullBackupData(
                     transactions = repository.allTransactions.first(),
                     bankAccounts = repository.allBankAccounts.first(),
@@ -2307,7 +2586,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     subscriptions = repository.allSubscriptions.first(),
                     savingsGoals = repository.allSavingsGoals.first(),
                     borrowLends = repository.allBorrowLends.first(),
-                    wishlists = repository.allWishlistItems.first()
+                    wishlists = repository.allWishlistItems.first(),
+                    userPreferences = userPrefs
                 )
                 val success = BackupEngine.exportAndShareBackup(context, data)
                 onComplete?.invoke(success)
@@ -2349,12 +2629,24 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 data.wishlists.forEach { repository.insertWishlistItem(it) }
                 data.transactions.forEach { repository.insertTransaction(it) }
 
+                // Restore user preferences if present
+                data.userPreferences?.let { prefs ->
+                    setExcludeCreditCards(prefs.cashOnlyMode)
+                    setNumberFormatPreference(prefs.numberFormatPreference)
+                    setSmsDetectionEnabled(prefs.smsDetectionEnabled)
+                    setCurrency(prefs.currencySymbol, prefs.currencyCode)
+                    if (prefs.isDarkTheme != null) {
+                        sharedPrefs.edit().putBoolean("is_dark_theme", prefs.isDarkTheme).apply()
+                    }
+                }
+
                 if (currentUser.value != null) {
                     syncDataWithCloud()
                 }
 
                 val modeText = if (isMergeMode) "Merged" else "Clean Restored"
-                val summary = "$modeText ${stats.totalTransactions} transactions, ${stats.totalBankAccounts} banks, ${stats.totalCreditCards} cards, ${stats.totalCategories} categories."
+                val prefsNote = if (data.userPreferences != null) " with custom preferences restored." else "."
+                val summary = "$modeText ${stats.totalTransactions} transactions, ${stats.totalBankAccounts} banks, ${stats.totalCreditCards} cards, ${stats.totalCategories} categories$prefsNote"
                 onResult(true, summary)
             } catch (e: Exception) {
                 e.printStackTrace()

@@ -93,7 +93,8 @@ data class Wishlist(
     val priority: String, // "HIGH", "MEDIUM", "LOW"
     val targetDate: Long,
     val notes: String = "",
-    val isPurchased: Boolean = false
+    val isPurchased: Boolean = false,
+    val purchasedTransactionId: Long? = null
 )
 
 @Entity(tableName = "custom_categories")

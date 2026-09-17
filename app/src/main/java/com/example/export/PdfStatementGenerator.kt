@@ -10,6 +10,7 @@ import android.graphics.pdf.PdfDocument
 import com.example.data.BankAccount
 import com.example.data.CreditCard
 import com.example.data.Transaction
+import com.example.ui.util.NumberFormatConfig
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
@@ -133,9 +134,10 @@ object PdfStatementGenerator {
         val kpiWidth = (contentWidth - 24f) / 4f
         val kpiHeight = 56f
 
-        drawKpiCard(canvas, margin, yCursor, kpiWidth, kpiHeight, "TOTAL INCOME", String.format(Locale.US, "₹%,.2f", totalIncome), Color.rgb(16, 185, 129), Color.rgb(236, 253, 245))
-        drawKpiCard(canvas, margin + kpiWidth + 8f, yCursor, kpiWidth, kpiHeight, "TOTAL EXPENSE", String.format(Locale.US, "₹%,.2f", totalExpense), Color.rgb(239, 68, 68), Color.rgb(254, 242, 242))
-        drawKpiCard(canvas, margin + (kpiWidth + 8f) * 2, yCursor, kpiWidth, kpiHeight, "NET CASH FLOW", String.format(Locale.US, "₹%,.2f", netCashFlow), if (netCashFlow >= 0) Color.rgb(5, 150, 105) else Color.rgb(220, 38, 38), Color.rgb(241, 245, 249))
+        val sym = NumberFormatConfig.currencySymbol
+        drawKpiCard(canvas, margin, yCursor, kpiWidth, kpiHeight, "TOTAL INCOME", NumberFormatConfig.formatAmount(totalIncome), Color.rgb(16, 185, 129), Color.rgb(236, 253, 245))
+        drawKpiCard(canvas, margin + kpiWidth + 8f, yCursor, kpiWidth, kpiHeight, "TOTAL EXPENSE", NumberFormatConfig.formatAmount(totalExpense), Color.rgb(239, 68, 68), Color.rgb(254, 242, 242))
+        drawKpiCard(canvas, margin + (kpiWidth + 8f) * 2, yCursor, kpiWidth, kpiHeight, "NET CASH FLOW", NumberFormatConfig.formatAmount(netCashFlow), if (netCashFlow >= 0) Color.rgb(5, 150, 105) else Color.rgb(220, 38, 38), Color.rgb(241, 245, 249))
         drawKpiCard(canvas, margin + (kpiWidth + 8f) * 3, yCursor, kpiWidth, kpiHeight, "SAVINGS RATE", String.format(Locale.US, "%.1f%%", savingsRate), Color.rgb(217, 119, 6), Color.rgb(254, 243, 199))
 
         yCursor += kpiHeight + 16f
@@ -163,7 +165,7 @@ object PdfStatementGenerator {
                 paint.textSize = 9.5f
                 canvas.drawText(catName, margin + 12f, catY, paint)
 
-                val amtStr = String.format(Locale.US, "₹%,.2f (%.0f%%)", amt, pct)
+                val amtStr = "${NumberFormatConfig.formatAmount(amt)} (${String.format(Locale.US, "%.0f%%", pct)})"
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 canvas.drawText(amtStr, margin + halfWidth - 12f - paint.measureText(amtStr), catY, paint)
                 catY += 20f
@@ -183,7 +185,7 @@ object PdfStatementGenerator {
             paint.color = Color.rgb(51, 65, 85)
             paint.textSize = 9.5f
             canvas.drawText("Tax-Deductible Spending:", margin + halfWidth + 24f, yCursor + 38f, paint)
-            val taxStr = String.format(Locale.US, "₹%,.2f (%d items)", taxDeductibleTotal, taxDeductibleTx.size)
+            val taxStr = "${NumberFormatConfig.formatAmount(taxDeductibleTotal)} (${taxDeductibleTx.size} items)"
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             paint.color = Color.rgb(217, 119, 6)
             canvas.drawText(taxStr, margin + contentWidth - 12f - paint.measureText(taxStr), yCursor + 38f, paint)
@@ -282,8 +284,8 @@ object PdfStatementGenerator {
             } else "-"
 
             val isIncome = tx.type == "INCOME" || tx.type == "REFUND"
-            val amtPrefix = if (isIncome) "+₹" else "-₹"
-            val amtStr = amtPrefix + String.format(Locale.US, "%,.2f", tx.amount)
+            val amtPrefix = if (isIncome) "+${NumberFormatConfig.currencySymbol}" else "-${NumberFormatConfig.currencySymbol}"
+            val amtStr = amtPrefix + NumberFormatConfig.formatAmount(tx.amount, withSymbol = false)
 
             // Draw text cells
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
