@@ -95,15 +95,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
 
-            // Populate sample data ONLY on very first installation, NEVER after user cleared history
-            val hasSeeded = sharedPrefs.getBoolean("has_seeded_sample_data", false)
-            if (!hasSeeded) {
-                val list = repository.allTransactions.first()
-                if (list.isEmpty()) {
-                    populateSampleData()
-                }
-                sharedPrefs.edit().putBoolean("has_seeded_sample_data", true).apply()
-            }
+            // Default first-run setup: ensure clean ledger (no demo data auto-seeded)
+            sharedPrefs.edit().putBoolean("has_seeded_sample_data", true).apply()
         }
     }
 
@@ -1552,6 +1545,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun syncDataWithCloud() {
         val user = firebaseAuth.currentUser ?: return
         val userId = user.uid
+        val demoEntityIds = sharedPrefs.getStringSet("demo_entity_ids", emptySet()) ?: emptySet()
         viewModelScope.launch {
             try {
                 // 1. Transactions
@@ -1561,6 +1555,13 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudTransactionsMap = snapshot.documents.associateBy { it.id }
                         localTransactions.forEach { local ->
+                            // Never upload demo transactions to cloud
+                            if (local.tagsString.contains("Demo", ignoreCase = true) ||
+                                local.notes.contains("[Demo Data]", ignoreCase = true) ||
+                                demoEntityIds.contains("tx_${local.id}")
+                            ) {
+                                return@forEach
+                            }
                             val cloudDoc = cloudTransactionsMap[local.id.toString()]
                             if (cloudDoc == null) {
                                 val data = mapOf(
@@ -1619,6 +1620,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
                         localBudgets.forEach { local ->
+                            if (demoEntityIds.contains("budget_${local.id}")) return@forEach
                             if (!cloudMap.containsKey(local.id.toString())) {
                                 val data = mapOf(
                                     "id" to local.id,
@@ -1651,6 +1653,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
                         localAssets.forEach { local ->
+                            if (local.notes.contains("[Demo Data]", ignoreCase = true) || demoEntityIds.contains("asset_${local.id}")) return@forEach
                             if (!cloudMap.containsKey(local.id.toString())) {
                                 val data = mapOf(
                                     "id" to local.id,
@@ -1691,6 +1694,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
                         localSubs.forEach { local ->
+                            if (local.notes.contains("[Demo Data]", ignoreCase = true) || demoEntityIds.contains("sub_${local.id}")) return@forEach
                             if (!cloudMap.containsKey(local.id.toString())) {
                                 val data = mapOf(
                                     "id" to local.id,
@@ -1743,6 +1747,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
                         localGoals.forEach { local ->
+                            if (local.notes.contains("[Demo Data]", ignoreCase = true) || demoEntityIds.contains("goal_${local.id}")) return@forEach
                             if (!cloudMap.containsKey(local.id.toString())) {
                                 val data = mapOf(
                                     "id" to local.id,
@@ -1779,6 +1784,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
                         localBL.forEach { local ->
+                            if (local.notes.contains("[Demo Data]", ignoreCase = true) || demoEntityIds.contains("bl_${local.id}")) return@forEach
                             if (!cloudMap.containsKey(local.id.toString())) {
                                 val data = mapOf(
                                     "id" to local.id,
@@ -1817,6 +1823,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
                         localWishlist.forEach { local ->
+                            if (local.notes.contains("[Demo Data]", ignoreCase = true) || demoEntityIds.contains("wish_${local.id}")) return@forEach
                             if (!cloudMap.containsKey(local.id.toString())) {
                                 val data = mapOf(
                                     "id" to local.id,
@@ -1890,6 +1897,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
                         localCards.forEach { local ->
+                            if (local.cardName.contains("(Demo)", ignoreCase = true) || demoEntityIds.contains("card_${local.id}")) return@forEach
                             if (!cloudMap.containsKey(local.id.toString())) {
                                 val data = mapOf(
                                     "id" to local.id,
@@ -1926,6 +1934,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
                         localBanks.forEach { local ->
+                            if (local.accountNickname.contains("(Demo)", ignoreCase = true) || demoEntityIds.contains("bank_${local.id}")) return@forEach
                             if (!cloudMap.containsKey(local.id.toString())) {
                                 val data = mapOf(
                                     "id" to local.id,
@@ -2275,13 +2284,22 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         reminders.sortedBy { it.dueDate }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Populate default database entries
+    fun loadSampleDemoData(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            populateSampleData()
+            onComplete()
+        }
+    }
+
+    // Populate default database entries (Strictly marked as demo, never uploaded to cloud)
     private suspend fun populateSampleData() {
+        val demoIds = (sharedPrefs.getStringSet("demo_entity_ids", emptySet()) ?: emptySet()).toMutableSet()
+
         // Add Bank Accounts
         val hdfcId = repository.insertBankAccount(
             BankAccount(
                 bankName = "HDFC Bank",
-                accountNickname = "Salary Account",
+                accountNickname = "Salary Account (Demo)",
                 accountNumberLast4 = "4589",
                 accountType = "SALARY",
                 initialBalance = 45000.0,
@@ -2289,11 +2307,12 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 isHiddenFromSummary = false
             )
         )
+        demoIds.add("bank_$hdfcId")
 
         val sbiId = repository.insertBankAccount(
             BankAccount(
                 bankName = "State Bank of India",
-                accountNickname = "Savings Fund",
+                accountNickname = "Savings Fund (Demo)",
                 accountNumberLast4 = "1204",
                 accountType = "SAVINGS",
                 initialBalance = 120000.0,
@@ -2301,6 +2320,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 isHiddenFromSummary = false
             )
         )
+        demoIds.add("bank_$sbiId")
 
         // Add Scooter Asset
         val scooterId = repository.insertAsset(
@@ -2310,144 +2330,164 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 purchaseDate = Calendar.getInstance().apply { set(2025, Calendar.JANUARY, 15) }.timeInMillis,
                 purchasePrice = 145000.0,
                 insuranceDetails = "HDFC Ergo, Policy #OLA9921, Renews Jan 2027",
-                notes = "Personal commuter vehicle"
+                notes = "Personal commuter vehicle [Demo Data]"
             )
         )
+        demoIds.add("asset_$scooterId")
 
         // Scooter Timeline Expenses
-        repository.insertTransaction(
+        val tx1Id = repository.insertTransaction(
             Transaction(
                 amount = 460.0,
                 category = "Vehicle",
                 subcategory = "Repair",
                 paymentMethod = "Cash",
                 merchant = "Local Garage",
-                notes = "Brake pad replacement & alignment",
+                notes = "Brake pad replacement & alignment [Demo Data]",
                 date = Calendar.getInstance().apply { set(2026, Calendar.JANUARY, 10) }.timeInMillis,
                 type = "EXPENSE",
-                assetId = scooterId
+                assetId = scooterId,
+                tagsString = "Demo"
             )
         )
+        demoIds.add("tx_$tx1Id")
 
-        repository.insertTransaction(
+        val tx2Id = repository.insertTransaction(
             Transaction(
                 amount = 350.0,
                 category = "Vehicle",
                 subcategory = "Fuel", // electricity charging
                 paymentMethod = "UPI",
                 merchant = "BESCOM Charging",
-                notes = "Monthly fast charging",
+                notes = "Monthly fast charging [Demo Data]",
                 date = Calendar.getInstance().apply { set(2026, Calendar.MARCH, 22) }.timeInMillis,
                 type = "EXPENSE",
-                assetId = scooterId
+                assetId = scooterId,
+                tagsString = "Demo"
             )
         )
+        demoIds.add("tx_$tx2Id")
 
-        repository.insertTransaction(
+        val tx3Id = repository.insertTransaction(
             Transaction(
                 amount = 2000.0,
                 category = "Vehicle",
                 subcategory = "Service",
                 paymentMethod = "Credit Card",
                 merchant = "Ola Experience Centre",
-                notes = "Annual full service & battery health diagnostic",
+                notes = "Annual full service & battery health diagnostic [Demo Data]",
                 date = Calendar.getInstance().apply { set(2026, Calendar.JULY, 1) }.timeInMillis,
                 type = "EXPENSE",
-                assetId = scooterId
+                assetId = scooterId,
+                tagsString = "Demo"
             )
         )
+        demoIds.add("tx_$tx3Id")
 
         // General Expenses
-        repository.insertTransaction(
+        val tx4Id = repository.insertTransaction(
             Transaction(
                 amount = 220.0,
                 category = "Food",
                 subcategory = "Lunch",
                 paymentMethod = "UPI",
                 merchant = "Domino's",
-                notes = "Team lunch",
+                notes = "Team lunch [Demo Data]",
                 date = System.currentTimeMillis() - 3 * 3600 * 1000, // 3 hrs ago
                 type = "EXPENSE",
-                tagsString = "Office"
+                tagsString = "Office,Demo"
             )
         )
+        demoIds.add("tx_$tx4Id")
 
-        repository.insertTransaction(
+        val tx5Id = repository.insertTransaction(
             Transaction(
                 amount = 85.0,
                 category = "Food",
                 subcategory = "Tea/Coffee",
                 paymentMethod = "UPI",
                 merchant = "Third Wave Coffee",
-                notes = "Morning cappuccino",
+                notes = "Morning cappuccino [Demo Data]",
                 date = System.currentTimeMillis() - 6 * 3600 * 1000, // 6 hrs ago
                 type = "EXPENSE",
-                tagsString = "Office"
+                tagsString = "Office,Demo"
             )
         )
+        demoIds.add("tx_$tx5Id")
 
-        repository.insertTransaction(
+        val tx6Id = repository.insertTransaction(
             Transaction(
                 amount = 15000.0,
                 category = "Home",
                 subcategory = "Rent",
                 paymentMethod = "Bank",
                 merchant = "Owner",
-                notes = "July House Rent",
+                notes = "July House Rent [Demo Data]",
                 date = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }.timeInMillis,
                 type = "EXPENSE",
-                tagsString = "Family"
+                tagsString = "Family,Demo"
             )
         )
+        demoIds.add("tx_$tx6Id")
 
-        repository.insertTransaction(
+        val tx7Id = repository.insertTransaction(
             Transaction(
                 amount = 1800.0,
                 category = "Home",
                 subcategory = "Internet",
                 paymentMethod = "Credit Card",
                 merchant = "ACT Fibernet",
-                notes = "Broadband high-speed internet renewal",
+                notes = "Broadband high-speed internet renewal [Demo Data]",
                 date = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 2) }.timeInMillis,
-                type = "EXPENSE"
+                type = "EXPENSE",
+                tagsString = "Demo"
             )
         )
+        demoIds.add("tx_$tx7Id")
 
         // Incomes
-        repository.insertTransaction(
+        val tx8Id = repository.insertTransaction(
             Transaction(
                 amount = 95000.0,
                 category = "Salary",
                 subcategory = "Primary Job",
                 paymentMethod = "Bank",
                 merchant = "TechCorp Inc.",
-                notes = "Monthly Salary Deposit",
+                notes = "Monthly Salary Deposit [Demo Data]",
                 date = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }.timeInMillis,
-                type = "INCOME"
+                type = "INCOME",
+                tagsString = "Demo"
             )
         )
+        demoIds.add("tx_$tx8Id")
 
-        repository.insertTransaction(
+        val tx9Id = repository.insertTransaction(
             Transaction(
                 amount = 12500.0,
                 category = "Freelancing",
                 subcategory = "Web Dev",
                 paymentMethod = "UPI",
                 merchant = "Upwork Project",
-                notes = "API integration payout",
+                notes = "API integration payout [Demo Data]",
                 date = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 4) }.timeInMillis,
-                type = "INCOME"
+                type = "INCOME",
+                tagsString = "Demo"
             )
         )
+        demoIds.add("tx_$tx9Id")
 
         // Budgets
-        repository.insertBudget(Budget(category = "Food", limitAmount = 8000.0, monthYear = "2026-07"))
-        repository.insertBudget(Budget(category = "Vehicle", limitAmount = 5000.0, monthYear = "2026-07"))
-        repository.insertBudget(Budget(category = "Home", limitAmount = 20000.0, monthYear = "2026-07"))
-        repository.insertBudget(Budget(category = "Shopping", limitAmount = 10000.0, monthYear = "2026-07"))
+        val b1 = repository.insertBudget(Budget(category = "Food", limitAmount = 8000.0, monthYear = "2026-07"))
+        val b2 = repository.insertBudget(Budget(category = "Vehicle", limitAmount = 5000.0, monthYear = "2026-07"))
+        val b3 = repository.insertBudget(Budget(category = "Home", limitAmount = 20000.0, monthYear = "2026-07"))
+        val b4 = repository.insertBudget(Budget(category = "Shopping", limitAmount = 10000.0, monthYear = "2026-07"))
+        demoIds.add("budget_$b1")
+        demoIds.add("budget_$b2")
+        demoIds.add("budget_$b3")
+        demoIds.add("budget_$b4")
 
         // Subscriptions
-        repository.insertSubscription(
+        val s1 = repository.insertSubscription(
             Subscription(
                 name = "Netflix Premium",
                 cost = 649.0,
@@ -2456,10 +2496,11 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 category = "Entertainment",
                 isAutoRenew = true,
                 reminderDaysInAdvance = 2,
-                paymentMethodName = "HDFC Regalia Card"
+                paymentMethodName = "HDFC Regalia Card",
+                notes = "[Demo Data]"
             )
         )
-        repository.insertSubscription(
+        val s2 = repository.insertSubscription(
             Subscription(
                 name = "Spotify Duo",
                 cost = 149.0,
@@ -2468,10 +2509,11 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 category = "Entertainment",
                 isAutoRenew = true,
                 reminderDaysInAdvance = 3,
-                paymentMethodName = "SBI Savings Account"
+                paymentMethodName = "SBI Savings Account",
+                notes = "[Demo Data]"
             )
         )
-        repository.insertSubscription(
+        val s3 = repository.insertSubscription(
             Subscription(
                 name = "ChatGPT Plus",
                 cost = 1999.0,
@@ -2480,10 +2522,11 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 category = "Work & Software",
                 isAutoRenew = true,
                 reminderDaysInAdvance = 3,
-                paymentMethodName = "ICICI Amazon Pay Card"
+                paymentMethodName = "ICICI Amazon Pay Card",
+                notes = "[Demo Data]"
             )
         )
-        repository.insertSubscription(
+        val s4 = repository.insertSubscription(
             Subscription(
                 name = "Google One 2TB",
                 cost = 650.0,
@@ -2492,71 +2535,84 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 category = "Cloud Storage",
                 isAutoRenew = true,
                 reminderDaysInAdvance = 5,
-                paymentMethodName = "UPI AutoPay"
+                paymentMethodName = "UPI AutoPay",
+                notes = "[Demo Data]"
             )
         )
+        demoIds.add("sub_$s1")
+        demoIds.add("sub_$s2")
+        demoIds.add("sub_$s3")
+        demoIds.add("sub_$s4")
 
         // Savings Goals
-        repository.insertSavingsGoal(
+        val g1 = repository.insertSavingsGoal(
             SavingsGoal(
                 name = "M3 MacBook Pro",
                 targetAmount = 180000.0,
                 currentAmount = 120000.0,
                 targetDate = Calendar.getInstance().apply { add(Calendar.MONTH, 3) }.timeInMillis,
-                notes = "Development laptop upgrade"
+                notes = "Development laptop upgrade [Demo Data]"
             )
         )
-        repository.insertSavingsGoal(
+        val g2 = repository.insertSavingsGoal(
             SavingsGoal(
                 name = "Emergency Fund",
                 targetAmount = 200000.0,
                 currentAmount = 85000.0,
                 targetDate = Calendar.getInstance().apply { add(Calendar.MONTH, 12) }.timeInMillis,
-                notes = "6 months of essential living expenses"
+                notes = "6 months of essential living expenses [Demo Data]"
             )
         )
+        demoIds.add("goal_$g1")
+        demoIds.add("goal_$g2")
 
         // Borrow & Lend
-        repository.insertBorrowLend(
+        val bl1 = repository.insertBorrowLend(
             BorrowLend(
                 contactName = "Rohan Sharma",
                 amount = 2500.0,
                 type = "LENT",
                 dueDate = System.currentTimeMillis() + 5 * 24 * 3600 * 1000L, // 5 days later
                 isPaid = false,
-                notes = "Weekend trip expense share"
+                notes = "Weekend trip expense share [Demo Data]"
             )
         )
-        repository.insertBorrowLend(
+        val bl2 = repository.insertBorrowLend(
             BorrowLend(
                 contactName = "Shikha Verma",
                 amount = 1200.0,
                 type = "BORROWED",
                 dueDate = System.currentTimeMillis() + 8 * 24 * 3600 * 1000L,
                 isPaid = false,
-                notes = "Bought concert ticket"
+                notes = "Bought concert ticket [Demo Data]"
             )
         )
+        demoIds.add("bl_$bl1")
+        demoIds.add("bl_$bl2")
 
         // Wishlist
-        repository.insertWishlistItem(
+        val w1 = repository.insertWishlistItem(
             Wishlist(
                 name = "Bose QuietComfort Headphones",
                 price = 28000.0,
                 priority = "HIGH",
                 targetDate = System.currentTimeMillis() + 30L * 24 * 3600 * 1000,
-                notes = "Noise cancellation for deep work"
+                notes = "Noise cancellation for deep work [Demo Data]"
             )
         )
-        repository.insertWishlistItem(
+        val w2 = repository.insertWishlistItem(
             Wishlist(
                 name = "Steelcase Gesture Chair",
                 price = 85000.0,
                 priority = "MEDIUM",
                 targetDate = System.currentTimeMillis() + 90L * 24 * 3600 * 1000,
-                notes = "Ergonomic workspace seating"
+                notes = "Ergonomic workspace seating [Demo Data]"
             )
         )
+        demoIds.add("wish_$w1")
+        demoIds.add("wish_$w2")
+
+        sharedPrefs.edit().putStringSet("demo_entity_ids", demoIds).apply()
     }
 
     // ==========================================

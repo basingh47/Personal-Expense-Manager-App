@@ -11026,6 +11026,8 @@ fun SettingsScreen(
     var showClearSmsQueueDialog by remember { mutableStateOf(false) }
     var showClearTransactionsDialog by remember { mutableStateOf(false) }
     var showFactoryResetDialog by remember { mutableStateOf(false) }
+    var showLoadDemoDialog by remember { mutableStateOf(false) }
+    var isLoadingDemoData by remember { mutableStateOf(false) }
     var showPdfExportDialog by remember { mutableStateOf(false) }
     var showCsvExportDialog by remember { mutableStateOf(false) }
     var showRestoreConfirmDialog by remember { mutableStateOf(false) }
@@ -12078,6 +12080,19 @@ fun SettingsScreen(
                         }
                     }
 
+                    // Action 0: Load Sample Demo Data Tile
+                    DataActionTile(
+                        icon = Icons.Default.Science,
+                        iconTint = MaterialTheme.colorScheme.primary,
+                        title = "Load Sample Demo Data",
+                        description = "Add sample accounts, budgets & transactions for quick testing (Offline only, never synced to cloud).",
+                        buttonText = "Load Demo",
+                        buttonColor = MaterialTheme.colorScheme.primaryContainer,
+                        textColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        onClick = { showLoadDemoDialog = true },
+                        testTag = "load_sample_demo_data_btn"
+                    )
+
                     // Action 1: Delete by Month Tile
                     DataActionTile(
                         icon = Icons.Default.CalendarMonth,
@@ -12564,6 +12579,92 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showFactoryResetDialog = false }) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        )
+    }
+
+    if (showLoadDemoDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isLoadingDemoData) showLoadDemoDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Science,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Load Sample Demo Data?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "This will add sample bank accounts, scooter asset, expenses, incomes, subscriptions, and budgets so you can explore all features.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CloudOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "Demo records are strictly offline and will never be synced or uploaded to your cloud account.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isLoadingDemoData = true
+                        viewModel.loadSampleDemoData {
+                            isLoadingDemoData = false
+                            showLoadDemoDialog = false
+                            Toast.makeText(context, "Sample demo data loaded successfully", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    enabled = !isLoadingDemoData,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    if (isLoadingDemoData) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text("Load Data", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLoadDemoDialog = false },
+                    enabled = !isLoadingDemoData
+                ) {
                     Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
