@@ -10,6 +10,8 @@ import com.example.sms.SmsNotificationHelper
 import com.example.sms.SmsParser
 import com.example.subscription.SubscriptionNotificationHelper
 import com.example.ui.util.NumberFormatConfig
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
@@ -29,19 +31,56 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
     private val repository: FinanceRepository
     
-    val firebaseAuth = FirebaseAuth.getInstance()
-    val firestore = FirebaseFirestore.getInstance()
+    private fun initFirebaseIfPossible(): Boolean {
+        if (FirebaseApp.getApps(getApplication<Application>()).isNotEmpty()) {
+            return true
+        }
+        return try {
+            val options = FirebaseOptions.Builder()
+                .setApplicationId("1:1234567890:android:abcdef")
+                .setProjectId("personal-expense-manager")
+                .setApiKey("AIzaSyDummyKeyForOfflineGracefulFallback")
+                .build()
+            FirebaseApp.initializeApp(getApplication(), options)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private val isFirebaseAvailable: Boolean = initFirebaseIfPossible()
+
+    val firebaseAuth: FirebaseAuth? = if (isFirebaseAvailable) {
+        runCatching { FirebaseAuth.getInstance() }.getOrNull()
+    } else null
+
+    val firestore: FirebaseFirestore? = if (isFirebaseAvailable) {
+        runCatching { FirebaseFirestore.getInstance() }.getOrNull()
+    } else null
 
     private val sharedPrefs = application.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
 
-    private val _currentUser = MutableStateFlow<FirebaseUser?>(firebaseAuth.currentUser)
+    private val currentFirebaseUser: FirebaseUser?
+        get() = firebaseAuth?.currentUser
+
+    private inline fun withCloud(block: (user: FirebaseUser, store: FirebaseFirestore) -> Unit) {
+        val user = currentFirebaseUser ?: return
+        val store = firestore ?: return
+        try {
+            block(user, store)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private val _currentUser = MutableStateFlow<FirebaseUser?>(currentFirebaseUser)
     val currentUser = _currentUser.asStateFlow()
 
     init {
         val database = AppDatabase.getDatabase(application)
         repository = FinanceRepository(database.financeDao())
         
-        firebaseAuth.addAuthStateListener { auth ->
+        firebaseAuth?.addAuthStateListener { auth ->
             _currentUser.value = auth.currentUser
             if (auth.currentUser != null) {
                 syncDataWithCloud()
@@ -185,14 +224,14 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             NumberFormatConfig.activePreference = "AUTO"
         }
 
-        val user = firebaseAuth.currentUser
+        val user = firebaseAuth?.currentUser
         if (user != null) {
             val prefData = mutableMapOf<String, Any>(
                 "currencySymbol" to symbol,
                 "currencyCode" to _currencyCode.value,
                 "updatedAt" to System.currentTimeMillis()
             )
-            firestore.collection("users").document(user.uid)
+            firestore!!.collection("users").document(user.uid)
                 .collection("settings").document("preferences")
                 .set(prefData, com.google.firebase.firestore.SetOptions.merge())
         }
@@ -202,13 +241,13 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         _numberFormatPreference.value = format
         NumberFormatConfig.activePreference = format
         sharedPrefs.edit().putString("number_format_preference", format).apply()
-        val user = firebaseAuth.currentUser
+        val user = firebaseAuth?.currentUser
         if (user != null) {
             val prefData = mapOf(
                 "numberFormatPreference" to format,
                 "updatedAt" to System.currentTimeMillis()
             )
-            firestore.collection("users").document(user.uid)
+            firestore!!.collection("users").document(user.uid)
                 .collection("settings").document("preferences")
                 .set(prefData, com.google.firebase.firestore.SetOptions.merge())
         }
@@ -217,13 +256,13 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun setSmsDetectionEnabled(enabled: Boolean) {
         _isSmsDetectionEnabled.value = enabled
         sharedPrefs.edit().putBoolean("sms_detection_enabled", enabled).apply()
-        val user = firebaseAuth.currentUser
+        val user = firebaseAuth?.currentUser
         if (user != null) {
             val prefData = mapOf(
                 "smsDetectionEnabled" to enabled,
                 "updatedAt" to System.currentTimeMillis()
             )
-            firestore.collection("users").document(user.uid)
+            firestore!!.collection("users").document(user.uid)
                 .collection("settings").document("preferences")
                 .set(prefData, com.google.firebase.firestore.SetOptions.merge())
         }
@@ -232,13 +271,13 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun setExcludeCreditCards(exclude: Boolean) {
         _excludeCreditCards.value = exclude
         sharedPrefs.edit().putBoolean("cash_only_mode", exclude).apply()
-        val user = firebaseAuth.currentUser
+        val user = firebaseAuth?.currentUser
         if (user != null) {
             val prefData = mapOf(
                 "cashOnlyMode" to exclude,
                 "updatedAt" to System.currentTimeMillis()
             )
-            firestore.collection("users").document(user.uid)
+            firestore!!.collection("users").document(user.uid)
                 .collection("settings").document("preferences")
                 .set(prefData, com.google.firebase.firestore.SetOptions.merge())
         }
@@ -341,10 +380,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             onConfirm = {
                 viewModelScope.launch {
                     repository.deleteTransactionsByIds(idsToDelete)
-                    val user = firebaseAuth.currentUser
+                    val user = firebaseAuth?.currentUser
                     if (user != null) {
                         idsToDelete.forEach { id ->
-                            firestore.collection("users").document(user.uid).collection("transactions")
+                            firestore!!.collection("users").document(user.uid).collection("transactions")
                                 .document(id.toString()).delete()
                         }
                     }
@@ -363,10 +402,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             }
             if (updatedList.isNotEmpty()) {
                 repository.insertTransactions(updatedList)
-                val user = firebaseAuth.currentUser
+                val user = firebaseAuth?.currentUser
                 if (user != null) {
                     updatedList.forEach { tx ->
-                        firestore.collection("users").document(user.uid).collection("transactions")
+                        firestore!!.collection("users").document(user.uid).collection("transactions")
                             .document(tx.id.toString()).update(
                                 mapOf(
                                     "category" to tx.category,
@@ -398,10 +437,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             }
             if (updatedList.isNotEmpty()) {
                 repository.insertTransactions(updatedList)
-                val user = firebaseAuth.currentUser
+                val user = firebaseAuth?.currentUser
                 if (user != null) {
                     updatedList.forEach { tx ->
-                        firestore.collection("users").document(user.uid).collection("transactions")
+                        firestore!!.collection("users").document(user.uid).collection("transactions")
                             .document(tx.id.toString()).update(
                                 mapOf(
                                     "paymentMethod" to tx.paymentMethod,
@@ -431,10 +470,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             }
             if (updatedList.isNotEmpty()) {
                 repository.insertTransactions(updatedList)
-                val user = firebaseAuth.currentUser
+                val user = firebaseAuth?.currentUser
                 if (user != null) {
                     updatedList.forEach { tx ->
-                        firestore.collection("users").document(user.uid).collection("transactions")
+                        firestore!!.collection("users").document(user.uid).collection("transactions")
                             .document(tx.id.toString()).update("tagsString", tx.tagsString)
                     }
                 }
@@ -455,10 +494,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             }
             if (updatedList.isNotEmpty()) {
                 repository.insertTransactions(updatedList)
-                val user = firebaseAuth.currentUser
+                val user = firebaseAuth?.currentUser
                 if (user != null) {
                     updatedList.forEach { tx ->
-                        firestore.collection("users").document(user.uid).collection("transactions")
+                        firestore!!.collection("users").document(user.uid).collection("transactions")
                             .document(tx.id.toString()).update("tagsString", tx.tagsString)
                     }
                 }
@@ -477,10 +516,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             }
             if (updatedList.isNotEmpty()) {
                 repository.insertTransactions(updatedList)
-                val user = firebaseAuth.currentUser
+                val user = firebaseAuth?.currentUser
                 if (user != null) {
                     updatedList.forEach { tx ->
-                        firestore.collection("users").document(user.uid).collection("transactions")
+                        firestore!!.collection("users").document(user.uid).collection("transactions")
                             .document(tx.id.toString()).update("tagsString", tx.tagsString)
                     }
                 }
@@ -649,7 +688,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addTransaction(tx: Transaction) {
         viewModelScope.launch {
             val id = repository.insertTransaction(tx)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -666,7 +705,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "creditCardId" to tx.creditCardId,
                     "bankAccountId" to tx.bankAccountId
                 )
-                firestore.collection("users").document(user.uid).collection("transactions")
+                firestore!!.collection("users").document(user.uid).collection("transactions")
                     .document(id.toString()).set(data)
             }
         }
@@ -675,9 +714,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteTransaction(tx: Transaction) {
         viewModelScope.launch {
             repository.deleteTransaction(tx)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("transactions")
+                firestore!!.collection("users").document(user.uid).collection("transactions")
                     .document(tx.id.toString()).delete()
             }
         }
@@ -787,13 +826,13 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val count = repository.deleteTransactionsByYearMonth(yearMonth)
             sharedPrefs.edit().putBoolean("has_seeded_sample_data", true).apply()
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 // Also remove corresponding transactions from firestore
                 try {
-                    val snapshot = firestore.collection("users").document(user.uid)
+                    val snapshot = firestore!!.collection("users").document(user.uid)
                         .collection("transactions").get().await()
-                    val batch = firestore.batch()
+                    val batch = firestore!!.batch()
                     var batchCount = 0
                     val sdf = SimpleDateFormat("yyyy-MM", Locale.getDefault())
                     for (doc in snapshot.documents) {
@@ -826,12 +865,12 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.clearAllTransactions()
             sharedPrefs.edit().putBoolean("has_seeded_sample_data", true).apply()
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 try {
-                    val snapshot = firestore.collection("users").document(user.uid)
+                    val snapshot = firestore!!.collection("users").document(user.uid)
                         .collection("transactions").get().await()
-                    val batch = firestore.batch()
+                    val batch = firestore!!.batch()
                     for (doc in snapshot.documents) {
                         batch.delete(doc.reference)
                     }
@@ -853,7 +892,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
             _excludeCreditCards.value = false
             
             // Cloud wipe if authenticated
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 try {
                     val collections = listOf(
@@ -861,8 +900,8 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                         "subscriptions", "savings_goals", "borrow_lend", "wishlist", "custom_categories"
                     )
                     for (col in collections) {
-                        val snap = firestore.collection("users").document(user.uid).collection(col).get().await()
-                        val batch = firestore.batch()
+                        val snap = firestore!!.collection("users").document(user.uid).collection(col).get().await()
+                        val batch = firestore!!.batch()
                         for (doc in snap.documents) {
                             batch.delete(doc.reference)
                         }
@@ -885,7 +924,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 parentCategory = parentCategory
             )
             val id = repository.insertCustomCategory(cat)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -894,7 +933,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "type" to type,
                     "parentCategory" to parentCategory
                 )
-                firestore.collection("users").document(user.uid).collection("custom_categories")
+                firestore!!.collection("users").document(user.uid).collection("custom_categories")
                     .document(id.toString()).set(data)
             }
         }
@@ -903,7 +942,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun updateCustomCategory(oldCategory: CustomCategory, newCategory: CustomCategory) {
         viewModelScope.launch {
             val id = repository.insertCustomCategory(newCategory)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -912,7 +951,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "type" to newCategory.type,
                     "parentCategory" to newCategory.parentCategory
                 )
-                firestore.collection("users").document(user.uid).collection("custom_categories")
+                firestore!!.collection("users").document(user.uid).collection("custom_categories")
                     .document(id.toString()).set(data)
             }
             
@@ -922,7 +961,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 childSubs.forEach { child ->
                     repository.insertCustomCategory(child.copy(parentCategory = newCategory.name))
                     if (user != null) {
-                        firestore.collection("users").document(user.uid).collection("custom_categories")
+                        firestore!!.collection("users").document(user.uid).collection("custom_categories")
                             .document(child.id.toString()).update("parentCategory", newCategory.name)
                     }
                 }
@@ -932,7 +971,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 txsToUpdate.forEach { tx ->
                     repository.insertTransaction(tx.copy(category = newCategory.name))
                     if (user != null) {
-                        firestore.collection("users").document(user.uid).collection("transactions")
+                        firestore!!.collection("users").document(user.uid).collection("transactions")
                             .document(tx.id.toString()).update("category", newCategory.name)
                     }
                 }
@@ -942,7 +981,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 budgetsToUpdate.forEach { b ->
                     repository.insertBudget(b.copy(category = newCategory.name))
                     if (user != null) {
-                        firestore.collection("users").document(user.uid).collection("budgets")
+                        firestore!!.collection("users").document(user.uid).collection("budgets")
                             .document(b.id.toString()).update("category", newCategory.name)
                     }
                 }
@@ -955,7 +994,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 txsToUpdate.forEach { tx ->
                     repository.insertTransaction(tx.copy(subcategory = newCategory.name))
                     if (user != null) {
-                        firestore.collection("users").document(user.uid).collection("transactions")
+                        firestore!!.collection("users").document(user.uid).collection("transactions")
                             .document(tx.id.toString()).update("subcategory", newCategory.name)
                     }
                 }
@@ -966,9 +1005,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteCustomCategory(category: CustomCategory) {
         viewModelScope.launch {
             repository.deleteCustomCategory(category)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("custom_categories")
+                firestore!!.collection("users").document(user.uid).collection("custom_categories")
                     .document(category.id.toString()).delete()
             }
             if (category.parentCategory == null) {
@@ -977,7 +1016,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 childSubs.forEach { child ->
                     repository.deleteCustomCategory(child)
                     if (user != null) {
-                        firestore.collection("users").document(user.uid).collection("custom_categories")
+                        firestore!!.collection("users").document(user.uid).collection("custom_categories")
                             .document(child.id.toString()).delete()
                     }
                 }
@@ -987,7 +1026,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 budgetsToDelete.forEach { b ->
                     repository.deleteBudget(b)
                     if (user != null) {
-                        firestore.collection("users").document(user.uid).collection("budgets")
+                        firestore!!.collection("users").document(user.uid).collection("budgets")
                             .document(b.id.toString()).delete()
                     }
                 }
@@ -1004,7 +1043,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addAsset(asset: Asset, onComplete: ((Long) -> Unit)? = null) {
         viewModelScope.launch {
             val id = repository.insertAsset(asset)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -1016,7 +1055,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "warrantyDetails" to asset.warrantyDetails,
                     "notes" to asset.notes
                 )
-                firestore.collection("users").document(user.uid).collection("assets")
+                firestore!!.collection("users").document(user.uid).collection("assets")
                     .document(id.toString()).set(data)
             }
             onComplete?.invoke(id)
@@ -1026,9 +1065,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteAsset(asset: Asset) {
         viewModelScope.launch {
             repository.deleteAsset(asset)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("assets")
+                firestore!!.collection("users").document(user.uid).collection("assets")
                     .document(asset.id.toString()).delete()
             }
         }
@@ -1037,7 +1076,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addBudget(budget: Budget) {
         viewModelScope.launch {
             val id = repository.insertBudget(budget)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -1045,7 +1084,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "limitAmount" to budget.limitAmount,
                     "monthYear" to budget.monthYear
                 )
-                firestore.collection("users").document(user.uid).collection("budgets")
+                firestore!!.collection("users").document(user.uid).collection("budgets")
                     .document(id.toString()).set(data)
             }
         }
@@ -1054,9 +1093,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteBudget(budget: Budget) {
         viewModelScope.launch {
             repository.deleteBudget(budget)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("budgets")
+                firestore!!.collection("users").document(user.uid).collection("budgets")
                     .document(budget.id.toString()).delete()
             }
         }
@@ -1065,7 +1104,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addSubscription(sub: Subscription) {
         viewModelScope.launch {
             val id = repository.insertSubscription(sub)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -1083,7 +1122,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "paymentMethodName" to sub.paymentMethodName,
                     "lastPaidDate" to (sub.lastPaidDate ?: 0L)
                 )
-                firestore.collection("users").document(user.uid).collection("subscriptions")
+                firestore!!.collection("users").document(user.uid).collection("subscriptions")
                     .document(id.toString()).set(data)
             }
         }
@@ -1093,9 +1132,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val updated = sub.copy(isActive = !sub.isActive)
             repository.insertSubscription(updated)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("subscriptions")
+                firestore!!.collection("users").document(user.uid).collection("subscriptions")
                     .document(sub.id.toString()).update("isActive", updated.isActive)
             }
         }
@@ -1105,9 +1144,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val updated = sub.copy(isAutoRenew = !sub.isAutoRenew)
             repository.insertSubscription(updated)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("subscriptions")
+                firestore!!.collection("users").document(user.uid).collection("subscriptions")
                     .document(sub.id.toString()).update("isAutoRenew", updated.isAutoRenew)
             }
         }
@@ -1117,9 +1156,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val updated = sub.copy(reminderDaysInAdvance = days)
             repository.insertSubscription(updated)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("subscriptions")
+                firestore!!.collection("users").document(user.uid).collection("subscriptions")
                     .document(sub.id.toString()).update("reminderDaysInAdvance", days)
             }
         }
@@ -1157,9 +1196,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 repository.insertTransaction(tx)
             }
 
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("subscriptions")
+                firestore!!.collection("users").document(user.uid).collection("subscriptions")
                     .document(sub.id.toString()).update(
                         mapOf(
                             "renewalDate" to nextRenewal,
@@ -1184,9 +1223,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteSubscription(sub: Subscription) {
         viewModelScope.launch {
             repository.deleteSubscription(sub)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("subscriptions")
+                firestore!!.collection("users").document(user.uid).collection("subscriptions")
                     .document(sub.id.toString()).delete()
             }
         }
@@ -1195,7 +1234,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addSavingsGoal(goal: SavingsGoal) {
         viewModelScope.launch {
             val id = repository.insertSavingsGoal(goal)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -1205,7 +1244,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "targetDate" to goal.targetDate,
                     "notes" to goal.notes
                 )
-                firestore.collection("users").document(user.uid).collection("savings_goals")
+                firestore!!.collection("users").document(user.uid).collection("savings_goals")
                     .document(id.toString()).set(data)
             }
         }
@@ -1215,9 +1254,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val updated = goal.copy(currentAmount = goal.currentAmount + addAmount)
             repository.insertSavingsGoal(updated)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("savings_goals")
+                firestore!!.collection("users").document(user.uid).collection("savings_goals")
                     .document(goal.id.toString()).update("currentAmount", updated.currentAmount)
             }
         }
@@ -1226,9 +1265,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteSavingsGoal(goal: SavingsGoal) {
         viewModelScope.launch {
             repository.deleteSavingsGoal(goal)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("savings_goals")
+                firestore!!.collection("users").document(user.uid).collection("savings_goals")
                     .document(goal.id.toString()).delete()
             }
         }
@@ -1237,7 +1276,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addBorrowLend(item: BorrowLend) {
         viewModelScope.launch {
             val id = repository.insertBorrowLend(item)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -1248,7 +1287,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "isPaid" to item.isPaid,
                     "notes" to item.notes
                 )
-                firestore.collection("users").document(user.uid).collection("borrow_lend")
+                firestore!!.collection("users").document(user.uid).collection("borrow_lend")
                     .document(id.toString()).set(data)
             }
         }
@@ -1258,9 +1297,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val updated = item.copy(isPaid = !item.isPaid)
             repository.insertBorrowLend(updated)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("borrow_lend")
+                firestore!!.collection("users").document(user.uid).collection("borrow_lend")
                     .document(item.id.toString()).update("isPaid", updated.isPaid)
             }
         }
@@ -1269,9 +1308,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteBorrowLend(item: BorrowLend) {
         viewModelScope.launch {
             repository.deleteBorrowLend(item)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("borrow_lend")
+                firestore!!.collection("users").document(user.uid).collection("borrow_lend")
                     .document(item.id.toString()).delete()
             }
         }
@@ -1280,7 +1319,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addWishlistItem(item: Wishlist) {
         viewModelScope.launch {
             val id = repository.insertWishlistItem(item)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -1292,7 +1331,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "isPurchased" to item.isPurchased,
                     "purchasedTransactionId" to item.purchasedTransactionId
                 )
-                firestore.collection("users").document(user.uid).collection("wishlist")
+                firestore!!.collection("users").document(user.uid).collection("wishlist")
                     .document(id.toString()).set(data)
             }
         }
@@ -1314,7 +1353,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     date = System.currentTimeMillis()
                 )
                 val txId = repository.insertTransaction(newTx)
-                val user = firebaseAuth.currentUser
+                val user = firebaseAuth?.currentUser
                 if (user != null) {
                     val txData = mapOf(
                         "id" to txId,
@@ -1331,7 +1370,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                         "creditCardId" to newTx.creditCardId,
                         "bankAccountId" to newTx.bankAccountId
                     )
-                    firestore.collection("users").document(user.uid).collection("transactions")
+                    firestore!!.collection("users").document(user.uid).collection("transactions")
                         .document(txId.toString()).set(txData)
                 }
 
@@ -1348,7 +1387,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                         "isPurchased" to true,
                         "purchasedTransactionId" to txId
                     )
-                    firestore.collection("users").document(user.uid).collection("wishlist")
+                    firestore!!.collection("users").document(user.uid).collection("wishlist")
                         .document(item.id.toString()).set(wishData)
                 }
             } else {
@@ -1356,16 +1395,16 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 val linkedTxId = item.purchasedTransactionId
                 if (linkedTxId != null && linkedTxId > 0L) {
                     repository.deleteTransactionsByIds(listOf(linkedTxId))
-                    val user = firebaseAuth.currentUser
+                    val user = firebaseAuth?.currentUser
                     if (user != null) {
-                        firestore.collection("users").document(user.uid).collection("transactions")
+                        firestore!!.collection("users").document(user.uid).collection("transactions")
                             .document(linkedTxId.toString()).delete()
                     }
                 }
 
                 val updated = item.copy(isPurchased = false, purchasedTransactionId = null)
                 repository.insertWishlistItem(updated)
-                val user = firebaseAuth.currentUser
+                val user = firebaseAuth?.currentUser
                 if (user != null) {
                     val wishData = mapOf(
                         "id" to updated.id,
@@ -1377,7 +1416,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                         "isPurchased" to false,
                         "purchasedTransactionId" to null
                     )
-                    firestore.collection("users").document(user.uid).collection("wishlist")
+                    firestore!!.collection("users").document(user.uid).collection("wishlist")
                         .document(item.id.toString()).set(wishData)
                 }
             }
@@ -1388,16 +1427,16 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             if (deleteLinkedExpense && item.purchasedTransactionId != null && item.purchasedTransactionId > 0L) {
                 repository.deleteTransactionsByIds(listOf(item.purchasedTransactionId))
-                val user = firebaseAuth.currentUser
+                val user = firebaseAuth?.currentUser
                 if (user != null) {
-                    firestore.collection("users").document(user.uid).collection("transactions")
+                    firestore!!.collection("users").document(user.uid).collection("transactions")
                         .document(item.purchasedTransactionId.toString()).delete()
                 }
             }
             repository.deleteWishlistItem(item)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("wishlist")
+                firestore!!.collection("users").document(user.uid).collection("wishlist")
                     .document(item.id.toString()).delete()
             }
         }
@@ -1406,7 +1445,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addCreditCard(card: CreditCard) {
         viewModelScope.launch {
             val id = repository.insertCreditCard(card)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -1416,7 +1455,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "cardLimit" to card.cardLimit,
                     "lastFourDigits" to card.lastFourDigits
                 )
-                firestore.collection("users").document(user.uid).collection("credit_cards")
+                firestore!!.collection("users").document(user.uid).collection("credit_cards")
                     .document(id.toString()).set(data)
             }
         }
@@ -1425,9 +1464,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteCreditCard(card: CreditCard) {
         viewModelScope.launch {
             repository.deleteCreditCard(card)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("credit_cards")
+                firestore!!.collection("users").document(user.uid).collection("credit_cards")
                     .document(card.id.toString()).delete()
             }
         }
@@ -1458,7 +1497,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun addBankAccount(bank: BankAccount) {
         viewModelScope.launch {
             val id = repository.insertBankAccount(bank)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to id,
@@ -1470,7 +1509,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "isSmsDetectionEnabled" to bank.isSmsDetectionEnabled,
                     "isHiddenFromSummary" to bank.isHiddenFromSummary
                 )
-                firestore.collection("users").document(user.uid).collection("bank_accounts")
+                firestore!!.collection("users").document(user.uid).collection("bank_accounts")
                     .document(id.toString()).set(data)
             }
         }
@@ -1479,7 +1518,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun updateBankAccount(bank: BankAccount) {
         viewModelScope.launch {
             repository.insertBankAccount(bank)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
                 val data = mapOf(
                     "id" to bank.id,
@@ -1491,7 +1530,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                     "isSmsDetectionEnabled" to bank.isSmsDetectionEnabled,
                     "isHiddenFromSummary" to bank.isHiddenFromSummary
                 )
-                firestore.collection("users").document(user.uid).collection("bank_accounts")
+                firestore!!.collection("users").document(user.uid).collection("bank_accounts")
                     .document(bank.id.toString()).set(data)
             }
         }
@@ -1500,9 +1539,9 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     fun deleteBankAccount(bank: BankAccount) {
         viewModelScope.launch {
             repository.deleteBankAccount(bank)
-            val user = firebaseAuth.currentUser
+            val user = firebaseAuth?.currentUser
             if (user != null) {
-                firestore.collection("users").document(user.uid).collection("bank_accounts")
+                firestore!!.collection("users").document(user.uid).collection("bank_accounts")
                     .document(bank.id.toString()).delete()
             }
         }
@@ -1517,7 +1556,12 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun signIn(email: String, password: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        firebaseAuth.signInWithEmailAndPassword(email, password)
+        val auth = firebaseAuth
+        if (auth == null) {
+            onFailure("Firebase is not configured or initialized")
+            return
+        }
+        auth.signInWithEmailAndPassword(email, password)
             .addOnSuccessListener {
                 onSuccess()
                 syncDataWithCloud()
@@ -1528,7 +1572,12 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun signUp(email: String, password: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
-        firebaseAuth.createUserWithEmailAndPassword(email, password)
+        val auth = firebaseAuth
+        if (auth == null) {
+            onFailure("Firebase is not configured or initialized")
+            return
+        }
+        auth.createUserWithEmailAndPassword(email, password)
             .addOnSuccessListener {
                 onSuccess()
                 syncDataWithCloud()
@@ -1539,18 +1588,19 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun logout() {
-        firebaseAuth.signOut()
+        firebaseAuth?.signOut()
     }
 
     fun syncDataWithCloud() {
-        val user = firebaseAuth.currentUser ?: return
+        val user = firebaseAuth?.currentUser ?: return
+        val store = firestore ?: return
         val userId = user.uid
         val demoEntityIds = sharedPrefs.getStringSet("demo_entity_ids", emptySet()) ?: emptySet()
         viewModelScope.launch {
             try {
                 // 1. Transactions
                 val localTransactions = repository.allTransactions.first()
-                val transactionsRef = firestore.collection("users").document(userId).collection("transactions")
+                val transactionsRef = store.collection("users").document(userId).collection("transactions")
                 transactionsRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudTransactionsMap = snapshot.documents.associateBy { it.id }
@@ -1615,7 +1665,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 2. Budgets
                 val localBudgets = repository.allBudgets.first()
-                val budgetsRef = firestore.collection("users").document(userId).collection("budgets")
+                val budgetsRef = store.collection("users").document(userId).collection("budgets")
                 budgetsRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1648,7 +1698,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 3. Assets
                 val localAssets = repository.allAssets.first()
-                val assetsRef = firestore.collection("users").document(userId).collection("assets")
+                val assetsRef = store.collection("users").document(userId).collection("assets")
                 assetsRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1689,7 +1739,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 4. Subscriptions
                 val localSubs = repository.allSubscriptions.first()
-                val subsRef = firestore.collection("users").document(userId).collection("subscriptions")
+                val subsRef = store.collection("users").document(userId).collection("subscriptions")
                 subsRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1742,7 +1792,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 5. Savings Goals
                 val localGoals = repository.allSavingsGoals.first()
-                val goalsRef = firestore.collection("users").document(userId).collection("savings_goals")
+                val goalsRef = store.collection("users").document(userId).collection("savings_goals")
                 goalsRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1779,7 +1829,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 6. Borrow Lend
                 val localBL = repository.allBorrowLends.first()
-                val blRef = firestore.collection("users").document(userId).collection("borrow_lend")
+                val blRef = store.collection("users").document(userId).collection("borrow_lend")
                 blRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1818,7 +1868,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 7. Wishlist
                 val localWishlist = repository.allWishlistItems.first()
-                val wishlistRef = firestore.collection("users").document(userId).collection("wishlist")
+                val wishlistRef = store.collection("users").document(userId).collection("wishlist")
                 wishlistRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1858,7 +1908,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 8. Custom Categories
                 val localCategories = repository.allCustomCategories.first()
-                val categoriesRef = firestore.collection("users").document(userId).collection("custom_categories")
+                val categoriesRef = store.collection("users").document(userId).collection("custom_categories")
                 categoriesRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1892,7 +1942,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 9. Credit Cards
                 val localCards = repository.allCreditCards.first()
-                val cardsRef = firestore.collection("users").document(userId).collection("credit_cards")
+                val cardsRef = store.collection("users").document(userId).collection("credit_cards")
                 cardsRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1929,7 +1979,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
 
                 // 10. Bank Accounts
                 val localBanks = repository.allBankAccounts.first()
-                val banksRef = firestore.collection("users").document(userId).collection("bank_accounts")
+                val banksRef = store.collection("users").document(userId).collection("bank_accounts")
                 banksRef.get().addOnSuccessListener { snapshot ->
                     viewModelScope.launch {
                         val cloudMap = snapshot.documents.associateBy { it.id }
@@ -1969,7 +2019,7 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 // 11. User Preferences & Settings (Cash-Only Mode, SMS Detection & Number Format)
-                val settingsRef = firestore.collection("users").document(userId).collection("settings").document("preferences")
+                val settingsRef = store.collection("users").document(userId).collection("settings").document("preferences")
                 settingsRef.get().addOnSuccessListener { doc ->
                     if (doc != null && doc.exists()) {
                         val cloudCashOnly = doc.getBoolean("cashOnlyMode")
